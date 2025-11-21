@@ -12,6 +12,7 @@ const MeetingsPage = lazy(() => import('./features/meetings/MeetingsPage.jsx'))
 const ResourcesPage = lazy(() => import('./features/resources/ResourcesPage.jsx'))
 const SettingsPage = lazy(() => import('./features/settings/SettingsPage.jsx'))
 const SettingsProfilePage = lazy(() => import('./features/settings/ProfilePage.jsx'))
+const HelpRequestsPage = lazy(() => import('./features/help/HelpRequestsPage.jsx'))
 
 function RequireAuth({ children }) {
   const { user } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="resources" element={<ResourcesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/profile" element={<SettingsProfilePage />} />
+          <Route path="help-requests" element={<HelpRequestsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
