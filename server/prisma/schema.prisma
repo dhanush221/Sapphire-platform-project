@@ -58,11 +58,19 @@ model Meeting {
   actionItems  ActionItem[]
 }
 
+enum ActionStatus {
+  pending
+  in_progress
+  done
+}
+
 model ActionItem {
   id         Int       @id @default(autoincrement())
   meetingId  Int
   text       String
-  status     String    @default("pending")  // pending | done
+  status     ActionStatus    @default(pending)
+  assignee   String?
+  dueAt      DateTime?
   createdAt  DateTime  @default(now())
 
   meeting    Meeting   @relation(fields: [meetingId], references: [id])
