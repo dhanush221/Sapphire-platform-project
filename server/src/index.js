@@ -35,6 +35,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'sapphire-platform-server' });
 });
 
+// Convenience redirect for root to the SPA
+app.get('/', (_req, res) => {
+  res.redirect('/app');
+});
+
 app.use('/api/help-requests', helpRequestsRouter);
 app.use('/api/meetings', meetingsUploadRouter);
 app.use('/tasks', tasksRouter);
@@ -60,6 +65,8 @@ app.get('/app/*', (_req, res) => {
 const uploadsDir = path.resolve(__dirname, '../uploads');
 try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch {}
 app.use('/uploads', express.static(uploadsDir));
+// Compatibility with meeting-tool frontend which expects /recordings
+app.use('/recordings', express.static(uploadsDir));
 
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
