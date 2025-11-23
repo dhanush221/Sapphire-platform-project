@@ -20,9 +20,9 @@ export default function MeetingsPage() {
     setLoading(true)
     setError(null)
     try {
-      const path = query ? `/api/meetings/search/query?q=${encodeURIComponent(query)}` : '/api/meetings'
+      const path = query ? `/api/meetings?q=${encodeURIComponent(query)}` : '/api/meetings'
       const data = await api.get(path)
-      const list = Array.isArray(data) ? data : []
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.meetings) ? data.meetings : [])
       setMeetings(list)
       setSelectedId((current) => {
         if (!list.length) return null
@@ -51,6 +51,23 @@ export default function MeetingsPage() {
   const handleSearchReset = () => {
     setSearch('')
     loadMeetings()
+  }
+
+  const handleToggleAction = async (action, overrides = {}) => {
+    const meeting = meetings.find(m => m.id === selectedId)
+    if (!meeting || !action?.id) return
+    try {
+      const payload = { ...overrides }
+      if (!payload.status && 'completed' in payload === false) {
+        payload.completed = !(String(action.status||action.completed).toLowerCase() === 'done' || action.completed)
+      }
+      const updated = await api.updateMeetingActionItem(meeting.id, action.id, payload)
+      setMeetings(list => list.map(m => m.id === updated.id ? updated : m))
+      setSelectedId(updated.id)
+    } catch (err) {
+      console.error('Failed to update action item', err)
+      setError(err.message || 'Failed to update action')
+    }
   }
 
   const handleUploaded = (meeting) => {
@@ -106,7 +123,7 @@ export default function MeetingsPage() {
       <div className="card meeting-details" id="meetingDetails">
         <div className="card__header"><h3>{selectedMeeting?.title || 'Meeting Details'}</h3></div>
         <div className="card__body">
-          <MeetingDetails meeting={selectedMeeting} />
+          <MeetingDetails meeting={selectedMeeting} onToggleAction={handleToggleAction} />
         </div>
       </div>
     </section>

@@ -66,11 +66,97 @@ export const api = {
   updateSubtask: (id, body) => http(`/subtasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteSubtask: (id) => http(`/subtasks/${id}`, { method: 'DELETE' }),
 
+  // Meetings
+  updateMeetingActionItem: (meetingId, actionId, body) => http(`/api/meetings/${meetingId}/action-items/${actionId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // Resources (frontend-friendly mocks; replace with real API when available)
+  listOfficialResources: async () => ({ resources: mockOfficialResources }),
+  listPersonalResources: async () => {
+    const items = readPersonalStore()
+    return { resources: items }
+  },
+  uploadPersonalResource: async (formData) => {
+    const title = formData.get('title') || 'Untitled'
+    const tags = (formData.get('tags') || '').split(',').map(t => t.trim()).filter(Boolean)
+    const resource = {
+      id: Date.now(),
+      title,
+      resourceType: formData.get('resourceType') || 'Routine',
+      notes: formData.get('notes') || '',
+      tags,
+      originalFileName: formData.get('file')?.name || 'file',
+      fileSize: formData.get('file')?.size || 0,
+      downloadUrl: '#',
+      previewUrl: '',
+      previewType: 'document',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      starred: false
+    }
+    const next = [resource, ...readPersonalStore()]
+    writePersonalStore(next)
+    return { resource, message: 'Resource added locally (mock).' }
+  },
+  updatePersonalResource: async (id, payload) => {
+    const items = readPersonalStore()
+    const updated = items.map((r) => (r.id === id ? { ...r, ...payload, updatedAt: new Date().toISOString() } : r))
+    writePersonalStore(updated)
+    const resource = updated.find((r) => r.id === id)
+    return { resource }
+  },
+  deletePersonalResource: async (id) => {
+    const filtered = readPersonalStore().filter((r) => r.id !== id)
+    writePersonalStore(filtered)
+    return { ok: true }
+  },
+
   // Generic
   get: (p) => http(p),
   post: (p, b) => http(p, { method: 'POST', body: JSON.stringify(b) }),
   put: (p, b) => http(p, { method: 'PUT', body: JSON.stringify(b) }),
   del: (p) => http(p, { method: 'DELETE' }),
+}
+
+const mockOfficialResources = [
+  {
+    id: 1,
+    title: 'Neurodiversity Workplace Guide',
+    description: 'Evidence-based guide for autistic interns and supervisors to co-create supports.',
+    category: 'Workplace rights',
+    credibility: 'verified',
+    badgeLabel: 'Verified',
+    sourceOrg: 'UK Civil Service',
+    sourceUrl: 'https://www.civilservice.gov.uk',
+    downloadUrl: 'https://www.civilservice.gov.uk',
+    tags: ['accommodations', 'communication', 'checklist']
+  },
+  {
+    id: 2,
+    title: 'Sensory Regulation Toolkit',
+    description: 'Planner to map sensory needs and design predictable routines.',
+    category: 'Sensory regulation',
+    credibility: 'trusted',
+    badgeLabel: 'Trusted',
+    sourceOrg: 'Autistica',
+    sourceUrl: 'https://www.autistica.org.uk',
+    downloadUrl: 'https://www.autistica.org.uk',
+    tags: ['sensory', 'regulation', 'planner']
+  }
+]
+
+function readPersonalStore() {
+  try {
+    const raw = localStorage.getItem('sapphirePersonalResources') || '[]'
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+function writePersonalStore(items) {
+  try {
+    localStorage.setItem('sapphirePersonalResources', JSON.stringify(items))
+  } catch {}
 }
 
 export default api;

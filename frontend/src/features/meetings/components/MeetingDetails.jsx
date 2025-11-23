@@ -26,18 +26,38 @@ function toTranscriptLines(text) {
   return text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
 }
 
-export default function MeetingDetails({ meeting }) {
+export default function MeetingDetails({ meeting, onToggleAction }) {
   const [tab, setTab] = useState('summary')
+  const [drafts, setDrafts] = useState({})
   useEffect(() => { setTab('summary') }, [meeting?.id])
+  useEffect(() => { setDrafts({}) }, [meeting?.id])
+
+  const summaryItems = useMemo(() => toSummaryList(meeting?.summary), [meeting?.summary])
+  const transcriptLines = useMemo(() => toTranscriptLines(meeting?.transcript), [meeting?.transcript])
+  const audioSrc = meeting?.recordingUrl ? resolveApiUrl(meeting.recordingUrl) : null
+  const actionItems = Array.isArray(meeting?.actionItems) ? meeting.actionItems : []
+
+  const formatDue = (value) => {
+    if (!value) return 'No due date'
+    try { return new Date(value).toLocaleString() } catch { return value }
+  }
+
+  const updateDraft = (id, patch) => {
+    setDrafts(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }))
+  }
+
+  const currentDraft = (item) => {
+    const base = drafts[item.id] || {}
+    return {
+      assignee: base.assignee ?? item.assignee ?? '',
+      dueAt: base.dueAt ?? (item.dueAt ? item.dueAt.slice(0,10) : ''),
+      status: base.status ?? (item.status || (item.completed ? 'done' : 'pending'))
+    }
+  }
 
   if (!meeting) {
     return <p className="empty-state">Select a meeting to review AI notes, transcript, and action items.</p>
   }
-
-  const summaryItems = useMemo(() => toSummaryList(meeting.summary), [meeting.summary])
-  const transcriptLines = useMemo(() => toTranscriptLines(meeting.transcript), [meeting.transcript])
-  const audioSrc = meeting.recordingUrl ? resolveApiUrl(meeting.recordingUrl) : null
-  const actionItems = Array.isArray(meeting.actionItems) ? meeting.actionItems : []
 
   return (
     <div>
@@ -89,13 +109,60 @@ export default function MeetingDetails({ meeting }) {
       <div id="actions" className={`tab-content ${tab === 'actions' ? 'active' : ''}`}>
         <div className="action-items">
           <h4>Action Items</h4>
-          {actionItems.length ? actionItems.map((item, idx) => (
-            <div key={item.id || idx} className="action-item">
-              <input type="checkbox" readOnly checked={String(item.status).toLowerCase() === 'done'} />
-              <label>{item.text}</label>
-              <span className={`assignee status-${String(item.status || 'pending').toLowerCase()}`}>{item.status || 'pending'}</span>
-            </div>
-          )) : (
+          {actionItems.length ? actionItems.map((item, idx) => {
+            const status = String(item.status || (item.completed ? 'done' : 'pending')).toLowerCase()
+            const checked = status === 'done'
+            const draft = currentDraft(item)
+            return (
+              <div key={item.id || idx} className="action-item">
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleAction && onToggleAction(item, { status: checked ? 'pending' : 'done' })}
+                  />
+                  <span>{item.text}</span>
+                  <span className={`assignee status-${status}`}>{status}</span>
+                </div>
+                <div className="action-item-meta">
+                  <div className="action-item-field">
+                    <label>Assignee</label>
+                    <input
+                      type="text"
+                      value={draft.assignee}
+                      onChange={(e)=> updateDraft(item.id, { assignee: e.target.value })}
+                      placeholder="Add assignee"
+                    />
+                  </div>
+                  <div className="action-item-field">
+                    <label>Due Date</label>
+                    <input
+                      type="date"
+                      value={draft.dueAt}
+                      onChange={(e)=> updateDraft(item.id, { dueAt: e.target.value })}
+                    />
+                  </div>
+                  <div className="action-item-field">
+                    <label>Status</label>
+                    <select value={draft.status} onChange={(e)=> updateDraft(item.id, { status: e.target.value })}>
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                  <div className="action-item-field">
+                    <small>Due: {formatDue(item.dueAt)}</small>
+                  </div>
+                  <button
+                    className="btn btn--secondary btn--sm"
+                    onClick={()=> onToggleAction && onToggleAction(item, drafts[item.id] ? drafts[item.id] : draft)}
+                  >
+                    Update
+                  </button>
+                </div>
+              </div>
+            )
+          }) : (
             <p className="empty-state">No action items detected.</p>
           )}
         </div>
