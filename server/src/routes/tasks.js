@@ -13,6 +13,11 @@ router.get('/', async (req, res) => {
       if (!user) user = await prisma.user.create({ data: { email, passwordHash: '', role: req.user.role || 'student' } });
       where = { userId: user.id };
     }
+    const folderQuery = req.query.folderId;
+    if (typeof folderQuery !== 'undefined') {
+      if (folderQuery === 'null') where.folderId = null;
+      else if (!Number.isNaN(Number(folderQuery))) where.folderId = Number(folderQuery);
+    }
     const items = await prisma.task.findMany({
       where,
       orderBy: [
@@ -31,7 +36,7 @@ router.get('/', async (req, res) => {
 // POST /tasks - create with default status pending and next orderIndex in that column
 router.post('/', async (req, res) => {
   try {
-    const { title, description, priority, dueDate, status, category } = req.body || {};
+    const { title, description, priority, dueDate, status, category, folderId } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title is required' });
 
     // Resolve user from header
@@ -59,6 +64,7 @@ router.post('/', async (req, res) => {
         status: column,
         orderIndex: nextOrder,
         category: category ?? null,
+        folderId: folderId ?? null,
         userId: resolvedUserId
       }
     });
@@ -82,6 +88,7 @@ router.put('/:id', async (req, res) => {
     if ('status' in body) data.status = body.status;
     if ('orderIndex' in body) data.orderIndex = body.orderIndex;
     if ('category' in body) data.category = body.category;
+    if ('folderId' in body) data.folderId = body.folderId ?? null;
 
     const updated = await prisma.task.update({ where: { id }, data });
     return res.json(updated);
@@ -115,15 +122,17 @@ router.patch('/reorder', async (req, res) => {
     const email = req.user?.email || null;
     let user = null;
     if (email) user = await prisma.user.findUnique({ where: { email } });
-    const tx = updates.map(u =>
-      prisma.task.update({
+    const tx = updates.map(u => {
+      const payload = {
+        status: u.status,
+        orderIndex: Number(u.orderIndex)
+      };
+      if ('folderId' in u) payload.folderId = u.folderId ?? null;
+      return prisma.task.update({
         where: { id: Number(u.id) },
-        data: {
-          status: u.status,
-          orderIndex: Number(u.orderIndex)
-        }
-      })
-    );
+        data: payload
+      });
+    });
     const result = await prisma.$transaction(tx);
     return res.json({ ok: true, count: result.length });
   } catch (err) {
