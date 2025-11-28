@@ -228,12 +228,12 @@ export default function TasksPage() {
     for (let i=0;i<firstDay;i++) cells.push({ empty:true, key:`e-${i}` })
     for (let d=1; d<=daysInMonth; d++) {
       const dayDate = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-      const t = (tasks||[]).filter(x => x.dueDate && x.dueDate.startsWith && x.dueDate.startsWith(dayDate))
+      const t = (filteredTasks||[]).filter(x => x.dueDate && x.dueDate.startsWith && x.dueDate.startsWith(dayDate))
       const dl = (deadlines||[]).filter(x => x.dueAt && x.dueAt.startsWith && x.dueAt.startsWith(dayDate))
       cells.push({ empty:false, day:d, key:`d-${d}`, tasks:t, deadlines:dl })
     }
     return cells
-  }, [tasks, deadlines, calMonth, calYear])
+  }, [filteredTasks, deadlines, calMonth, calYear])
 
   const onSaveTask = async (payload) => {
     if (!payload.title) { alert('Title is required'); return }
@@ -324,7 +324,7 @@ export default function TasksPage() {
       {view==='list' && (
         <div id="list-view" className="task-view active">
           <div className="task-list">
-            {(tasks||[]).map(t => {
+            {(filteredTasks||[]).map(t => {
               const due = t.dueDate ? new Date(t.dueDate) : null
               const dueStr = due ? due.toLocaleDateString(undefined,{month:'short', day:'numeric'}) : ''
               const pri = (t.priority||'medium')
@@ -439,7 +439,7 @@ export default function TasksPage() {
         <div id="timeline-view" className="task-view active">
           <div className="timeline">
             {(() => {
-              const items = (tasks||[]).filter(t=>t.dueDate).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate))
+              const items = (filteredTasks||[]).filter(t=>t.dueDate).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate))
               if (items.length===0) return <div className="deadline-empty">No tasks with due dates</div>
               const start = new Date(items[0].dueDate); start.setHours(0,0,0,0)
               const end = new Date(start); end.setDate(start.getDate()+14)
