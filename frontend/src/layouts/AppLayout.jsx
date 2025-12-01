@@ -6,7 +6,7 @@ import Modal from '../components/Modal.jsx'
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const [helpOpen, setHelpOpen] = useState(false)
   const [notify, setNotify] = useState(false)
   const [helpType, setHelpType] = useState('Task Management')
@@ -45,10 +45,12 @@ export default function AppLayout() {
             <i className="fas fa-question-circle"></i>
             <span>Ask for Help</span>
           </button>
-          <Link to="/help-requests" className="help-btn" style={{marginLeft: 8, background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)'}}>
-            <i className="fas fa-life-ring"></i>
-            <span>Requests</span>
-          </Link>
+          {user?.role === 'supervisor' && (
+            <Link to="/help-requests" className="help-btn" style={{marginLeft: 8, background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)'}}>
+              <i className="fas fa-life-ring"></i>
+              <span>Requests</span>
+            </Link>
+          )}
           <button className="help-btn" onClick={()=>{ logout(); navigate('/login') }} style={{marginLeft: 8}}>
             <i className="fas fa-sign-out-alt"></i>
             <span>Logout</span>
