@@ -5,6 +5,7 @@ import { useTasks } from '../../lib/hooks/useTasks'
 import { useDeadlines } from '../../lib/hooks/useDeadlines'
 import { useFolders } from '../../lib/hooks/useFolders'
 import { api } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChanged }) {
   const dueDateObj = task.dueDate ? new Date(task.dueDate) : null
@@ -110,7 +111,7 @@ const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChan
   )
 })
 
-const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, onSave, folders, defaultFolderId }) {
+const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, onSave, folders, defaultFolderId, assigneeEmail }) {
   const [title, setTitle] = useState(task?.title || '')
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.substring(0,10) : '')
   const [priority, setPriority] = useState(task?.priority || 'medium')
@@ -152,6 +153,7 @@ const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, o
         <option value="">No folder</option>
         {(folders||[]).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
       </select>
+      {assigneeEmail && <p style={{marginTop:8, color:'var(--color-muted)', fontSize:14}}>This task will be assigned to <strong>{assigneeEmail}</strong>.</p>}
       <div className="modal-actions">
         <button className="btn-cancel" onClick={onClose}>Cancel</button>
         <button className="btn btn--primary" onClick={()=> onSave({ title: title.trim(), dueDate: dueDate ? new Date(dueDate).toISOString() : null, priority, category: category?.trim() || null, folderId })}>Save</button>
@@ -161,9 +163,11 @@ const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, o
 })
 
 export default function TasksPage() {
+  const { user } = useAuth()
+  const isSupervisor = (user?.role === 'supervisor')
   const { tasks, refresh, create, update, remove, reorder } = useTasks()
   const { deadlines } = useDeadlines()
-  const { folders, create: createFolder, remove: removeFolder, update: updateFolder } = useFolders()
+  const { folders, create: createFolder, remove: removeFolder, update: updateFolder, refresh: refreshFolders } = useFolders()
   const [searchParams, setSearchParams] = useSearchParams()
   const allowedViews = useMemo(() => ['kanban','list','calendar','timeline'], [])
   const initialView = useMemo(() => {
@@ -177,6 +181,10 @@ export default function TasksPage() {
   const [editing, setEditing] = useState(null)
   const [subProgress, setSubProgress] = useState({})
   const [selectedFolder, setSelectedFolder] = useState('all')
+  const [students, setStudents] = useState([])
+  const [loadingStudents, setLoadingStudents] = useState(false)
+  const [studentError, setStudentError] = useState(null)
+  const [selectedStudent, setSelectedStudent] = useState(null)
 
   // Sync view with URL query (?view=kanban|list|calendar)
   useEffect(() => {
@@ -193,11 +201,45 @@ export default function TasksPage() {
     if (v && allowedViews.includes(v) && v !== view) setView(v)
   }, [searchParams])
 
+  // When supervisor, load student roster to assign tasks
+  useEffect(() => {
+    let alive = true
+    if (!isSupervisor) {
+      setStudents([]); setSelectedStudent(null); setStudentError(null); setLoadingStudents(false)
+      return () => {}
+    }
+    setLoadingStudents(true); setStudentError(null)
+    api.listUsers({ role: 'student' })
+      .then(data => {
+        if (!alive) return
+        setStudents(data || [])
+        if (data && data.length > 0) {
+          setSelectedStudent(data[0])
+        }
+      })
+      .catch(err => { if (alive) setStudentError(err) })
+      .finally(() => { if (alive) setLoadingStudents(false) })
+    return () => { alive = false }
+  }, [isSupervisor])
+
+  // Keep tasks/folders in sync with selected student
+  useEffect(() => {
+    const targetEmail = isSupervisor ? (selectedStudent?.email || null) : null
+    if (isSupervisor && !targetEmail) return
+    refresh({ forEmail: targetEmail })
+    refreshFolders({ forEmail: targetEmail })
+    setSelectedFolder('all')
+  }, [isSupervisor, selectedStudent, refresh, refreshFolders])
+
+  const activeAssigneeEmail = isSupervisor ? (selectedStudent?.email || null) : null
+  const canManageTasks = !isSupervisor || !!activeAssigneeEmail
+
   const filteredTasks = useMemo(() => {
+    if (isSupervisor && !activeAssigneeEmail) return []
     if (selectedFolder === 'all') return tasks || []
     if (selectedFolder === 'none') return (tasks||[]).filter(t => !t.folderId)
     return (tasks||[]).filter(t => t.folderId === selectedFolder)
-  }, [tasks, selectedFolder])
+  }, [tasks, selectedFolder, isSupervisor, activeAssigneeEmail])
 
   const lists = useMemo(() => {
     const by = { pending: [], in_progress: [], completed: [] }
@@ -214,8 +256,8 @@ export default function TasksPage() {
     const existingIds = col.map(t=>t.id)
     const ids = existingIds.includes(taskId) ? existingIds : [...existingIds, taskId]
     const updates = ids.map((id, index) => ({ id, status, orderIndex: index }))
-    await reorder(updates)
-  }, [lists, reorder])
+    await reorder(updates, { forEmail: activeAssigneeEmail })
+  }, [lists, reorder, activeAssigneeEmail])
 
   const [calMonth, setCalMonth] = useState(()=> new Date().getMonth())
   const [calYear, setCalYear] = useState(()=> new Date().getFullYear())
@@ -238,30 +280,36 @@ export default function TasksPage() {
   const onSaveTask = async (payload) => {
     if (!payload.title) { alert('Title is required'); return }
     try {
-      if (editing) await update(editing.id, payload)
-      else await create(payload)
+      const finalPayload = isSupervisor ? { ...payload, assigneeEmail: activeAssigneeEmail } : payload
+      if (editing) await update(editing.id, finalPayload, { forEmail: activeAssigneeEmail })
+      else await create(finalPayload, { forEmail: activeAssigneeEmail })
       setModalOpen(false); setEditing(null)
     } catch (e) {
       alert(e?.message || 'Failed to save task. If you are running the frontend dev server, set VITE_API_BASE to your backend URL.')
     }
   }
 
-  const openAdd = () => { setEditing(null); setModalOpen(true) }
+  const openAdd = () => { if (!canManageTasks) return; setEditing(null); setModalOpen(true) }
   const openEdit = (t) => { setEditing(t); setModalOpen(true) }
-  const onDelete = async (t) => { if (confirm('Delete this task?')) { await remove(t.id) } }
+  const onDelete = async (t) => { if (confirm('Delete this task?')) { await remove(t.id, { forEmail: activeAssigneeEmail }) } }
   const addFolder = async () => {
     const name = prompt('Folder name')
     if (!name) return
-    try { await createFolder({ name: name.trim() }) } catch (e) { alert(e?.message || 'Failed to create folder') }
+    try { await createFolder({ name: name.trim(), forEmail: activeAssigneeEmail }, { forEmail: activeAssigneeEmail }) } catch (e) { alert(e?.message || 'Failed to create folder') }
   }
   const deleteFolder = async (id) => {
     if (!confirm('Delete this folder? Tasks inside will be left unfiled.')) return
-    try { await removeFolder(id); setSelectedFolder('all') } catch (e) { alert(e?.message || 'Failed to delete folder') }
+    try { await removeFolder(id, { forEmail: activeAssigneeEmail }); setSelectedFolder('all') } catch (e) { alert(e?.message || 'Failed to delete folder') }
   }
   const renameFolder = async (folder) => {
     const name = prompt('New folder name', folder.name)
     if (!name) return
-    try { await updateFolder(folder.id, { name: name.trim() }) } catch (e) { alert(e?.message || 'Failed to rename folder') }
+    try { await updateFolder(folder.id, { name: name.trim() }, { forEmail: activeAssigneeEmail }) } catch (e) { alert(e?.message || 'Failed to rename folder') }
+  }
+  const onSelectStudent = (email) => {
+    if (!email) { setSelectedStudent(null); return }
+    const match = (students||[]).find(s => s.email === email)
+    setSelectedStudent(match || { email })
   }
 
   const defaultFolderId = useMemo(() => {
@@ -271,6 +319,23 @@ export default function TasksPage() {
 
   return (
     <section id="tasks" className="content-section active">
+      {isSupervisor && (
+        <div className="card" style={{marginBottom: 16}}>
+          <div className="card__body" style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+            <div style={{minWidth: 260}}>
+              <label className="form-label" htmlFor="studentSelect">Assign tasks to</label>
+              <select id="studentSelect" className="form-control" value={selectedStudent?.email || ''} onChange={e=>onSelectStudent(e.target.value)}>
+                <option value="">Select a student...</option>
+                {(students||[]).map(s => <option key={s.id || s.email} value={s.email}>{s.name ? `${s.name} (${s.email})` : s.email}</option>)}
+              </select>
+            </div>
+            {loadingStudents && <span className="badge">Loading students…</span>}
+            {studentError && <span style={{color:'var(--color-error)'}}>Could not load students: {studentError.message}</span>}
+            {!loadingStudents && students.length===0 && !studentError && <span style={{color:'var(--color-muted)'}}>No students yet. Ask them to sign in so you can assign tasks.</span>}
+            {activeAssigneeEmail && <span className="badge" style={{background:'var(--color-surface-alt)', color:'var(--color-text)'}}>Viewing {activeAssigneeEmail}</span>}
+          </div>
+        </div>
+      )}
       <div className="section-header">
         <h2>Organization Tool</h2>
         <div className="view-controls">
@@ -279,27 +344,33 @@ export default function TasksPage() {
           <button className={`view-btn ${view==='calendar'?'active':''}`} data-view="calendar" onClick={()=>setView('calendar')}><i className="fas fa-calendar"></i> Calendar</button>
           <button className={`view-btn ${view==='timeline'?'active':''}`} data-view="timeline" onClick={()=>setView('timeline')}><i className="fas fa-stream"></i> Timeline</button>
         </div>
-        <button className="btn btn--primary btn--sm" onClick={openAdd} style={{marginLeft: 'auto'}}>
+        <button className="btn btn--primary btn--sm" onClick={openAdd} style={{marginLeft: 'auto'}} disabled={!canManageTasks}>
           <i className="fas fa-plus"/> Add Task
         </button>
       </div>
 
       <div className="folder-bar" aria-label="Task folders">
         <div className="folder-chips">
-          <button className={`folder-chip ${selectedFolder==='all'?'active':''}`} onClick={()=>setSelectedFolder('all')}>All</button>
-          <button className={`folder-chip ${selectedFolder==='none'?'active':''}`} onClick={()=>setSelectedFolder('none')}>No Folder</button>
+          <button className={`folder-chip ${selectedFolder==='all'?'active':''}`} onClick={()=>setSelectedFolder('all')} disabled={!canManageTasks}>All</button>
+          <button className={`folder-chip ${selectedFolder==='none'?'active':''}`} onClick={()=>setSelectedFolder('none')} disabled={!canManageTasks}>No Folder</button>
           {(folders||[]).map(f => (
             <div key={f.id} className={`folder-chip folder-chip--with-actions ${selectedFolder===f.id?'active':''}`}>
-              <button onClick={()=>setSelectedFolder(f.id)}>{f.name}</button>
+              <button onClick={()=>setSelectedFolder(f.id)} disabled={!canManageTasks}>{f.name}</button>
               <div className="folder-chip__actions">
-                <button aria-label="Rename folder" onClick={()=>renameFolder(f)}><i className="fas fa-pen"/></button>
-                <button aria-label="Delete folder" onClick={()=>deleteFolder(f.id)}><i className="fas fa-trash"/></button>
+                <button aria-label="Rename folder" onClick={()=>renameFolder(f)} disabled={!canManageTasks}><i className="fas fa-pen"/></button>
+                <button aria-label="Delete folder" onClick={()=>deleteFolder(f.id)} disabled={!canManageTasks}><i className="fas fa-trash"/></button>
               </div>
             </div>
           ))}
         </div>
-        <button className="btn btn--outline btn--sm" onClick={addFolder}><i className="fas fa-folder-plus"/> New Folder</button>
+        <button className="btn btn--outline btn--sm" onClick={addFolder} disabled={!canManageTasks}><i className="fas fa-folder-plus"/> New Folder</button>
       </div>
+
+      {isSupervisor && !activeAssigneeEmail && (
+        <div className="deadline-empty" style={{marginTop:12}}>
+          Select a student to view and assign their tasks.
+        </div>
+      )}
 
       {view==='kanban' && (
         <div id="kanban-view" className="task-view active">
@@ -334,7 +405,7 @@ export default function TasksPage() {
               const statusPct = sub && sub.total>0 ? Math.round((sub.done/sub.total)*100) : (status === 'completed' ? 100 : status === 'in_progress' ? 50 : 0)
               const statusLabel = sub && sub.total>0 ? `${statusPct}% Complete` : (status === 'completed' ? 'Completed' : status === 'in_progress' ? 'In Progress' : 'Pending')
               const toggleComplete = async (checked) => {
-                try { await update(t.id, { status: checked ? 'completed' : 'pending' }) } catch(e) { alert(e?.message||'Failed to update') }
+                try { await update(t.id, { status: checked ? 'completed' : 'pending' }, { forEmail: activeAssigneeEmail }) } catch(e) { alert(e?.message||'Failed to update') }
               }
               return (
                 <div key={t.id} className={`task-list-item ${priClass}-priority`}>
@@ -472,7 +543,7 @@ export default function TasksPage() {
         </div>
       )}
 
-      <AddEditTaskModal open={modalOpen} task={editing} folders={folders} defaultFolderId={defaultFolderId} onClose={()=>{ setModalOpen(false); setEditing(null) }} onSave={onSaveTask} />
+      <AddEditTaskModal open={modalOpen} task={editing} folders={folders} defaultFolderId={defaultFolderId} assigneeEmail={activeAssigneeEmail} onClose={()=>{ setModalOpen(false); setEditing(null) }} onSave={onSaveTask} />
     </section>
   )
 }

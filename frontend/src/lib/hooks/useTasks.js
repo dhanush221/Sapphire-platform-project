@@ -1,28 +1,73 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 
-export function useTasks(initial = []) {
+export function useTasks(initial = [], options = {}) {
   const [tasks, setTasks] = useState(initial)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [currentEmail, setCurrentEmail] = useState(options.initialForEmail || null)
+  const emailRef = useRef(options.initialForEmail || null)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts = {}) => {
+    const targetEmail = (opts && Object.prototype.hasOwnProperty.call(opts, 'forEmail'))
+      ? (opts.forEmail || null)
+      : emailRef.current;
+    emailRef.current = targetEmail || null
+    setCurrentEmail(targetEmail || null)
     setLoading(true); setError(null)
     try {
-      const data = await api.listTasks()
+      const data = await api.listTasks(targetEmail ? { forEmail: targetEmail } : undefined)
       setTasks(data)
     } catch (e) {
-      setError(e)
+      const err = e instanceof Error ? e : new Error('Failed to load tasks')
+      console.error(err)
+      setError(err)
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { refresh({ forEmail: currentEmail }) }, [refresh])
+  useEffect(() => { emailRef.current = currentEmail }, [currentEmail])
 
-  const create = useCallback(async (body) => { await api.createTask(body); await refresh() }, [refresh])
-  const update = useCallback(async (id, body) => { await api.updateTask(id, body); await refresh() }, [refresh])
-  const remove = useCallback(async (id) => { await api.deleteTask(id); await refresh() }, [refresh])
-  const reorder = useCallback(async (updates) => { await api.reorderTasks(updates); await refresh() }, [refresh])
+  const create = useCallback(async (body, opts = {}) => {
+    try {
+      await api.createTask(body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to create task')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
+  const update = useCallback(async (id, body, opts = {}) => {
+    try {
+      await api.updateTask(id, body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to update task')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
+  const remove = useCallback(async (id, opts = {}) => {
+    try {
+      await api.deleteTask(id)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to delete task')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
+  const reorder = useCallback(async (updates, opts = {}) => {
+    try {
+      await api.reorderTasks(updates)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to reorder tasks')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
 
-  return { tasks, loading, error, refresh, create, update, remove, reorder }
+  return { tasks, loading, error, refresh, create, update, remove, reorder, currentEmail }
 }
-

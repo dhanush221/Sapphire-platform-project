@@ -7,6 +7,9 @@ import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import { AssemblyAI } from "assemblyai";
 import { prisma } from "../../prisma.js";
+import { requireAuth } from "../../middleware/auth.js";
+import { validateBody, validateParams } from "../../middleware/validate.js";
+import { z } from "zod";
 
 const router = express.Router();
 const uploadsDir = path.resolve("uploads");
@@ -74,19 +77,20 @@ const updateMemoryActionItem = (meetingId, actionId, status, extra = {}) => {
 };
 
 async function resolveUserFromRequest(req, { createIfMissing = false } = {}) {
-  const email = req.user?.email || req.headers["x-user-email"] || null;
-  if (!email) return null;
-  let user = await prisma.user.findUnique({ where: { email } });
-  if (!user && createIfMissing) {
-    user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash: "",
-        role: req.user?.role || req.headers["x-user-role"] || "student"
-      }
-    });
+  if (req.user?.id) {
+    return prisma.user.findUnique({ where: { id: req.user.id } });
   }
-  return user;
+  const email = req.user?.email || null;
+  if (!email) return null;
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user || !createIfMissing) return user;
+  return prisma.user.create({
+    data: {
+      email,
+      passwordHash: "",
+      role: req.user?.role || "student"
+    }
+  });
 }
 
 async function cleanupFiles(files = []) {
@@ -140,6 +144,23 @@ async function runAssemblyTranscription(filePath, metadata = {}) {
 
   return { transcriptText, summary, actionItems };
 }
+
+const actionParamsSchema = z.object({
+  meetingId: z.coerce.number().int().positive(),
+  actionId: z.coerce.number().int().positive()
+});
+
+const actionUpdateSchema = z.object({
+  status: z.enum(["done", "in_progress", "pending"]).optional(),
+  completed: z.boolean().optional(),
+  assignee: z.string().trim().optional().nullable(),
+  dueAt: z.union([z.string(), z.date()]).optional().nullable()
+});
+const uploadPayloadSchema = z.object({
+  title: z.string().trim().max(200).optional()
+});
+
+router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   try {
@@ -221,7 +242,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/upload", uploadFields, async (req, res) => {
+router.post("/upload", uploadFields, validateBody(uploadPayloadSchema), async (req, res) => {
   const files = req.files || {};
   const uploaded =
     (Array.isArray(files.audio) && files.audio[0]) ||
@@ -240,10 +261,10 @@ router.post("/upload", uploadFields, async (req, res) => {
     const user = await resolveUserFromRequest(req, { createIfMissing: true });
     if (!user) {
       await cleanupFiles([filePath]);
-      return res.status(400).json({ error: "Missing x-user-email header" });
+      return res.status(401).json({ error: "Authentication required" });
     }
 
-    const providedTitle = String(req.body?.title || "").trim();
+    const providedTitle = String(req.validatedBody?.title || req.body?.title || "").trim();
     const baseTitle = uploaded.originalname ? uploaded.originalname.replace(/\.[^/.]+$/, "") : "Meeting";
     const finalTitle = providedTitle || baseTitle;
 
@@ -299,13 +320,10 @@ router.post("/upload", uploadFields, async (req, res) => {
 
 // PATCH /api/meetings/:meetingId/action-items/:actionId
 // Body: { completed: boolean } or { status: 'done'|'pending' }
-router.patch("/:meetingId/action-items/:actionId", async (req, res) => {
+router.patch("/:meetingId/action-items/:actionId", validateParams(actionParamsSchema), validateBody(actionUpdateSchema), async (req, res) => {
   try {
-    const meetingId = Number(req.params.meetingId);
-    const actionId = Number(req.params.actionId);
-    if (!Number.isInteger(meetingId) || !Number.isInteger(actionId)) {
-      return res.status(400).json({ error: "Invalid ids" });
-    }
+    const meetingId = req.validatedParams.meetingId;
+    const actionId = req.validatedParams.actionId;
 
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
@@ -322,7 +340,7 @@ router.patch("/:meetingId/action-items/:actionId", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const body = req.body || {};
+    const body = req.validatedBody || {};
     const statusFromBoolean = "completed" in body ? (body.completed ? "done" : "pending") : null;
     const nextStatusRaw = (body.status || statusFromBoolean || "").toString().toLowerCase();
     const nextStatus = ["done","in_progress","pending"].includes(nextStatusRaw) ? nextStatusRaw : "pending";

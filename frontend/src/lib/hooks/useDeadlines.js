@@ -11,13 +11,25 @@ export function useDeadlines(initial = []) {
     try {
       const data = await api.upcomingDeadlines()
       setDeadlines(data)
-    } catch (e) { setError(e) } finally { setLoading(false) }
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to load deadlines')
+      console.error(err)
+      setError(err)
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
 
-  const create = useCallback(async (body) => { await api.createDeadline(body); await refresh() }, [refresh])
+  const create = useCallback(async (body) => {
+    try {
+      await api.createDeadline(body)
+      await refresh()
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to create deadline')
+      setError(err)
+      throw err
+    }
+  }, [refresh])
 
   return { deadlines, loading, error, refresh, create }
 }
-

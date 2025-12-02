@@ -17,12 +17,17 @@ export function resolveApiUrl(resourcePath = '') {
   return `${API_BASE}${path}`
 }
 
+let unauthorizedHandler = null;
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = typeof fn === 'function' ? fn : null;
+}
+
 async function http(path, options = {}) {
-  const user = JSON.parse(localStorage.getItem('sapphireUser') || '{}')
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
-  if (user?.role) headers['x-user-role'] = user.role
-  if (user?.email) headers['x-user-email'] = user.email
-  if (user?.name) headers['x-user-name'] = user.name
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  const headers = { ...(options.headers || {}) }
+  if (!isFormData && options.method && options.method !== 'GET') {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json'
+  }
   const url = path.startsWith('/') ? `${API_BASE}${path}` : `${API_BASE}/${path}`
   const res = await fetch(url, { headers, credentials: 'include', ...options })
   const ct = res.headers.get('content-type') || ''
@@ -38,6 +43,9 @@ async function http(path, options = {}) {
     const hint = !ct.includes('application/json') && sameOrigin
       ? 'Hint: In dev, set VITE_API_BASE to your backend URL (e.g., http://localhost:5000).'
       : ''
+    if (res.status === 401 && typeof unauthorizedHandler === 'function') {
+      try { unauthorizedHandler() } catch {}
+    }
     throw new Error(data?.error || bodySnippet || `${res.status} ${res.statusText}` + (hint ? `\n${hint}` : ''))
   }
   // Return parsed data when JSON, or an empty object otherwise
@@ -46,15 +54,42 @@ async function http(path, options = {}) {
 
 export const api = {
   // Tasks
-  listTasks: () => http('/tasks'),
+  listTasks: (params) => {
+    let query = ''
+    if (params) {
+      const search = new URLSearchParams()
+      const email = typeof params === 'string' ? params : params.forEmail
+      if (email) search.set('forEmail', email)
+      query = search.toString() ? `?${search.toString()}` : ''
+    }
+    return http(`/tasks${query}`)
+  },
   createTask: (body) => http('/tasks', { method: 'POST', body: JSON.stringify(body) }),
   updateTask: (id, body) => http(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteTask: (id) => http(`/tasks/${id}`, { method: 'DELETE' }),
   reorderTasks: (updates) => http('/tasks/reorder', { method: 'PATCH', body: JSON.stringify({ updates }) }),
-  listFolders: () => http('/folders'),
+  listFolders: (params) => {
+    let query = ''
+    if (params) {
+      const search = new URLSearchParams()
+      const email = typeof params === 'string' ? params : params.forEmail
+      if (email) search.set('forEmail', email)
+      query = search.toString() ? `?${search.toString()}` : ''
+    }
+    return http(`/folders${query}`)
+  },
   createFolder: (body) => http('/folders', { method: 'POST', body: JSON.stringify(body) }),
   updateFolder: (id, body) => http(`/folders/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteFolder: (id) => http(`/folders/${id}`, { method: 'DELETE' }),
+  listUsers: (params) => {
+    let query = ''
+    if (params && params.role) {
+      const search = new URLSearchParams()
+      search.set('role', params.role)
+      query = `?${search.toString()}`
+    }
+    return http(`/users${query}`)
+  },
 
   // Deadlines
   upcomingDeadlines: () => http('/deadlines/upcoming'),
@@ -74,93 +109,25 @@ export const api = {
   updateMeetingActionItem: (meetingId, actionId, body) => http(`/api/meetings/${meetingId}/action-items/${actionId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // Resources (frontend-friendly mocks; replace with real API when available)
-  listOfficialResources: async () => ({ resources: mockOfficialResources }),
-  listPersonalResources: async () => {
-    const items = readPersonalStore()
-    return { resources: items }
-  },
-  uploadPersonalResource: async (formData) => {
-    const title = formData.get('title') || 'Untitled'
-    const tags = (formData.get('tags') || '').split(',').map(t => t.trim()).filter(Boolean)
-    const resource = {
-      id: Date.now(),
-      title,
-      resourceType: formData.get('resourceType') || 'Routine',
-      notes: formData.get('notes') || '',
-      tags,
-      originalFileName: formData.get('file')?.name || 'file',
-      fileSize: formData.get('file')?.size || 0,
-      downloadUrl: '#',
-      previewUrl: '',
-      previewType: 'document',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      starred: false
-    }
-    const next = [resource, ...readPersonalStore()]
-    writePersonalStore(next)
-    return { resource, message: 'Resource added locally (mock).' }
-  },
-  updatePersonalResource: async (id, payload) => {
-    const items = readPersonalStore()
-    const updated = items.map((r) => (r.id === id ? { ...r, ...payload, updatedAt: new Date().toISOString() } : r))
-    writePersonalStore(updated)
-    const resource = updated.find((r) => r.id === id)
-    return { resource }
-  },
-  deletePersonalResource: async (id) => {
-    const filtered = readPersonalStore().filter((r) => r.id !== id)
-    writePersonalStore(filtered)
-    return { ok: true }
-  },
+  listOfficialResources: () => http('/api/resources/official'),
+  listPersonalResources: () => http('/api/resources'),
+  uploadPersonalResource: (formData) => http('/api/resources', { method: 'POST', body: formData }),
+  updatePersonalResource: (id, payload) => http(`/api/resources/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deletePersonalResource: (id) => http(`/api/resources/${id}`, { method: 'DELETE' }),
+
+  // Auth
+  login: (body) => http('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  register: (body) => http('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+  logout: () => http('/api/auth/logout', { method: 'POST' }),
+  currentUser: () => http('/api/auth/me'),
+  requestPasswordReset: (email) => http('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (body) => http('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
 
   // Generic
   get: (p) => http(p),
   post: (p, b) => http(p, { method: 'POST', body: JSON.stringify(b) }),
   put: (p, b) => http(p, { method: 'PUT', body: JSON.stringify(b) }),
   del: (p) => http(p, { method: 'DELETE' }),
-}
-
-const mockOfficialResources = [
-  {
-    id: 1,
-    title: 'Neurodiversity Workplace Guide',
-    description: 'Evidence-based guide for autistic interns and supervisors to co-create supports.',
-    category: 'Workplace rights',
-    credibility: 'verified',
-    badgeLabel: 'Verified',
-    sourceOrg: 'UK Civil Service',
-    sourceUrl: 'https://www.civilservice.gov.uk',
-    downloadUrl: 'https://www.civilservice.gov.uk',
-    tags: ['accommodations', 'communication', 'checklist']
-  },
-  {
-    id: 2,
-    title: 'Sensory Regulation Toolkit',
-    description: 'Planner to map sensory needs and design predictable routines.',
-    category: 'Sensory regulation',
-    credibility: 'trusted',
-    badgeLabel: 'Trusted',
-    sourceOrg: 'Autistica',
-    sourceUrl: 'https://www.autistica.org.uk',
-    downloadUrl: 'https://www.autistica.org.uk',
-    tags: ['sensory', 'regulation', 'planner']
-  }
-]
-
-function readPersonalStore() {
-  try {
-    const raw = localStorage.getItem('sapphirePersonalResources') || '[]'
-    return JSON.parse(raw)
-  } catch {
-    return []
-  }
-}
-
-function writePersonalStore(items) {
-  try {
-    localStorage.setItem('sapphirePersonalResources', JSON.stringify(items))
-  } catch {}
 }
 
 export default api;

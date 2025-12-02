@@ -1,16 +1,26 @@
 import express from 'express';
+import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateBody } from '../middleware/validate.js';
 
 const router = express.Router();
 
-// Create a help request
-router.post('/', async (req, res) => {
-  try {
-    const { type, description, urgency, mood, energy, timestamp, userId } = req.body || {};
+const helpRequestSchema = z.object({
+  type: z.string().trim().min(1),
+  description: z.string().trim().min(1),
+  urgency: z.string().trim().optional(),
+  mood: z.number().int().min(0).max(10).optional(),
+  energy: z.number().int().min(0).max(10).optional(),
+  timestamp: z.union([z.string(), z.date()]).optional()
+});
 
-    if (!type || !description) {
-      return res.status(400).json({ error: 'type and description are required' });
-    }
+router.use(requireAuth);
+
+// Create a help request
+router.post('/', validateBody(helpRequestSchema), async (req, res) => {
+  try {
+    const { type, description, urgency, mood, energy, timestamp } = req.validatedBody;
 
     const created = await prisma.helpRequest.create({
       data: {
@@ -20,7 +30,7 @@ router.post('/', async (req, res) => {
         mood: typeof mood === 'number' ? mood : null,
         energy: typeof energy === 'number' ? energy : null,
         clientTimestamp: timestamp ? new Date(timestamp) : null,
-        userId: userId ?? null
+        userId: req.user?.id ?? null
       }
     });
 
@@ -43,4 +53,3 @@ router.get('/', async (_req, res) => {
 });
 
 export default router;
-

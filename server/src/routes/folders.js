@@ -1,18 +1,37 @@
 import express from 'express';
+import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { findOrCreateUserByEmail } from '../utils/user.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateBody, validateParams } from '../middleware/validate.js';
 
 const router = express.Router();
+
+const folderIdParam = z.object({ id: z.coerce.number().int().positive() });
+const createFolderSchema = z.object({
+  name: z.string().trim().min(1),
+  forEmail: z.string().email().optional()
+});
+const updateFolderSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  orderIndex: z.coerce.number().int().optional()
+});
+
+router.use(requireAuth);
 
 // GET /folders - list user's folders ordered by orderIndex then createdAt
 router.get('/', async (req, res) => {
   try {
-    const email = req.user?.email || null;
+    const isSupervisor = req.user?.role === 'supervisor';
+    const email = isSupervisor && req.query.forEmail
+      ? String(req.query.forEmail)
+      : (req.user?.email || null);
     let where = {};
-    if (email) {
-      let user = await prisma.user.findUnique({ where: { email } });
-      if (!user) user = await prisma.user.create({ data: { email, passwordHash: '', role: req.user.role || 'student' } });
-      where = { userId: user.id };
-    }
+    const user = await findOrCreateUserByEmail(
+      email,
+      isSupervisor && email !== req.user?.email ? 'student' : (req.user?.role || 'student')
+    );
+    if (user) where = { userId: user.id };
     const folders = await prisma.folder.findMany({
       where,
       orderBy: [
@@ -28,18 +47,17 @@ router.get('/', async (req, res) => {
 });
 
 // POST /folders - create folder at end of list
-router.post('/', async (req, res) => {
+router.post('/', validateBody(createFolderSchema), async (req, res) => {
   try {
-    const { name } = req.body || {};
-    if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    const { name, forEmail } = req.validatedBody;
 
-    const email = req.user?.email || null;
-    let resolvedUserId = null;
-    if (email) {
-      let user = await prisma.user.findUnique({ where: { email } });
-      if (!user) user = await prisma.user.create({ data: { email, passwordHash: '', role: req.user.role || 'student' } });
-      resolvedUserId = user.id;
-    }
+    const isSupervisor = req.user?.role === 'supervisor';
+    const email = isSupervisor && forEmail ? String(forEmail) : (req.user?.email || null);
+    const resolvedUser = await findOrCreateUserByEmail(
+      email,
+      isSupervisor && email !== req.user?.email ? 'student' : (req.user?.role || 'student')
+    );
+    const resolvedUserId = resolvedUser?.id ?? null;
 
     const maxIndex = await prisma.folder.aggregate({
       _max: { orderIndex: true },
@@ -62,10 +80,15 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /folders/:id - rename or reorder
-router.put('/:id', async (req, res) => {
+router.put('/:id', validateParams(folderIdParam), validateBody(updateFolderSchema), async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const { name, orderIndex } = req.body || {};
+    const id = req.validatedParams.id;
+    const { name, orderIndex } = req.validatedBody;
+    const existing = await prisma.folder.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Folder not found' });
+    if (existing.userId && existing.userId !== req.user.id && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const data = {};
     if (typeof name === 'string') data.name = name.trim();
     if (typeof orderIndex === 'number') data.orderIndex = orderIndex;
@@ -78,9 +101,14 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /folders/:id - null folderId on tasks then remove folder
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', validateParams(folderIdParam), async (req, res) => {
   try {
-    const id = Number(req.params.id);
+    const id = req.validatedParams.id;
+    const existing = await prisma.folder.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Folder not found' });
+    if (existing.userId && existing.userId !== req.user.id && req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     await prisma.task.updateMany({ where: { folderId: id }, data: { folderId: null } });
     await prisma.folder.delete({ where: { id } });
     return res.json({ ok: true });

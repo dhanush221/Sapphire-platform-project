@@ -1,0 +1,11 @@
+{
+  "sessions": [
+    {
+      "tokenHash": "9dc283083ad896a3188131e7ba87c4db2237b3fa57475ef982dee0d7c1013e6f",
+      "userId": 2,
+      "createdAt": "2025-11-30T01:15:21.215Z",
+      "lastUsedAt": "2025-12-02T19:13:27.411Z",
+      "expiresAt": "2025-12-03T01:15:21.215Z"
+    }
+  ]
+}
