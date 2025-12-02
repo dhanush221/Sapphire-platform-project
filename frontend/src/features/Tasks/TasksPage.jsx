@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import Modal from '../../components/Modal.jsx'
 import { useTasks } from '../../lib/hooks/useTasks'
 import { useDeadlines } from '../../lib/hooks/useDeadlines'
+import { useFolders } from '../../lib/hooks/useFolders'
 import { api } from '../../lib/api'
 
 const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChanged }) {
@@ -109,11 +110,12 @@ const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChan
   )
 })
 
-const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, onSave }) {
+const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, onSave, folders, defaultFolderId }) {
   const [title, setTitle] = useState(task?.title || '')
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.substring(0,10) : '')
   const [priority, setPriority] = useState(task?.priority || 'medium')
   const [category, setCategory] = useState(task?.category || '')
+  const [folderId, setFolderId] = useState(task?.folderId ?? defaultFolderId ?? null)
 
   // Keep fields in sync if task changes or dialog opens
   useEffect(() => {
@@ -122,8 +124,9 @@ const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, o
       setDueDate(task?.dueDate ? task.dueDate.substring(0,10) : '')
       setPriority(task?.priority || 'medium')
       setCategory(task?.category || '')
+      setFolderId(task?.folderId ?? defaultFolderId ?? null)
     }
-  }, [open, task])
+  }, [open, task, defaultFolderId])
 
   if (!open) return null
   return (
@@ -141,9 +144,17 @@ const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, o
         </select>
       <label htmlFor="taskCategory">Category</label>
       <input id="taskCategory" type="text" placeholder="e.g., Meetings, Learning, Project Work" value={category} onChange={e=>setCategory(e.target.value)} />
+      <label htmlFor="taskFolder">Folder</label>
+      <select id="taskFolder" value={folderId ?? ''} onChange={e=>{
+        const val = e.target.value === '' ? null : Number(e.target.value)
+        setFolderId(val)
+      }}>
+        <option value="">No folder</option>
+        {(folders||[]).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+      </select>
       <div className="modal-actions">
         <button className="btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="btn btn--primary" onClick={()=> onSave({ title: title.trim(), dueDate: dueDate ? new Date(dueDate).toISOString() : null, priority, category: category?.trim() || null })}>Save</button>
+        <button className="btn btn--primary" onClick={()=> onSave({ title: title.trim(), dueDate: dueDate ? new Date(dueDate).toISOString() : null, priority, category: category?.trim() || null, folderId })}>Save</button>
       </div>
     </Modal>
   )
@@ -152,6 +163,7 @@ const AddEditTaskModal = memo(function AddEditTaskModal({ open, task, onClose, o
 export default function TasksPage() {
   const { tasks, refresh, create, update, remove, reorder } = useTasks()
   const { deadlines } = useDeadlines()
+  const { folders, create: createFolder, remove: removeFolder, update: updateFolder } = useFolders()
   const [searchParams, setSearchParams] = useSearchParams()
   const allowedViews = useMemo(() => ['kanban','list','calendar','timeline'], [])
   const initialView = useMemo(() => {
@@ -164,6 +176,7 @@ export default function TasksPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [subProgress, setSubProgress] = useState({})
+  const [selectedFolder, setSelectedFolder] = useState('all')
 
   // Sync view with URL query (?view=kanban|list|calendar)
   useEffect(() => {
@@ -180,12 +193,18 @@ export default function TasksPage() {
     if (v && allowedViews.includes(v) && v !== view) setView(v)
   }, [searchParams])
 
+  const filteredTasks = useMemo(() => {
+    if (selectedFolder === 'all') return tasks || []
+    if (selectedFolder === 'none') return (tasks||[]).filter(t => !t.folderId)
+    return (tasks||[]).filter(t => t.folderId === selectedFolder)
+  }, [tasks, selectedFolder])
+
   const lists = useMemo(() => {
     const by = { pending: [], in_progress: [], completed: [] }
-    ;(tasks||[]).forEach(t => { (by[t.status || 'pending'] || (by[t.status||'pending']=[])).push(t) })
+    ;(filteredTasks||[]).forEach(t => { (by[t.status || 'pending'] || (by[t.status||'pending']=[])).push(t) })
     Object.values(by).forEach(arr => arr.sort((a,b)=> (a.orderIndex??0)-(b.orderIndex??0)))
     return by
-  }, [tasks])
+  }, [filteredTasks])
 
   const onDropTo = useCallback(async (status, e) => {
     e.preventDefault()
@@ -209,12 +228,12 @@ export default function TasksPage() {
     for (let i=0;i<firstDay;i++) cells.push({ empty:true, key:`e-${i}` })
     for (let d=1; d<=daysInMonth; d++) {
       const dayDate = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-      const t = (tasks||[]).filter(x => x.dueDate && x.dueDate.startsWith && x.dueDate.startsWith(dayDate))
+      const t = (filteredTasks||[]).filter(x => x.dueDate && x.dueDate.startsWith && x.dueDate.startsWith(dayDate))
       const dl = (deadlines||[]).filter(x => x.dueAt && x.dueAt.startsWith && x.dueAt.startsWith(dayDate))
       cells.push({ empty:false, day:d, key:`d-${d}`, tasks:t, deadlines:dl })
     }
     return cells
-  }, [tasks, deadlines, calMonth, calYear])
+  }, [filteredTasks, deadlines, calMonth, calYear])
 
   const onSaveTask = async (payload) => {
     if (!payload.title) { alert('Title is required'); return }
@@ -230,6 +249,25 @@ export default function TasksPage() {
   const openAdd = () => { setEditing(null); setModalOpen(true) }
   const openEdit = (t) => { setEditing(t); setModalOpen(true) }
   const onDelete = async (t) => { if (confirm('Delete this task?')) { await remove(t.id) } }
+  const addFolder = async () => {
+    const name = prompt('Folder name')
+    if (!name) return
+    try { await createFolder({ name: name.trim() }) } catch (e) { alert(e?.message || 'Failed to create folder') }
+  }
+  const deleteFolder = async (id) => {
+    if (!confirm('Delete this folder? Tasks inside will be left unfiled.')) return
+    try { await removeFolder(id); setSelectedFolder('all') } catch (e) { alert(e?.message || 'Failed to delete folder') }
+  }
+  const renameFolder = async (folder) => {
+    const name = prompt('New folder name', folder.name)
+    if (!name) return
+    try { await updateFolder(folder.id, { name: name.trim() }) } catch (e) { alert(e?.message || 'Failed to rename folder') }
+  }
+
+  const defaultFolderId = useMemo(() => {
+    if (selectedFolder === 'all' || selectedFolder === 'none') return null
+    return selectedFolder
+  }, [selectedFolder])
 
   return (
     <section id="tasks" className="content-section active">
@@ -244,6 +282,23 @@ export default function TasksPage() {
         <button className="btn btn--primary btn--sm" onClick={openAdd} style={{marginLeft: 'auto'}}>
           <i className="fas fa-plus"/> Add Task
         </button>
+      </div>
+
+      <div className="folder-bar" aria-label="Task folders">
+        <div className="folder-chips">
+          <button className={`folder-chip ${selectedFolder==='all'?'active':''}`} onClick={()=>setSelectedFolder('all')}>All</button>
+          <button className={`folder-chip ${selectedFolder==='none'?'active':''}`} onClick={()=>setSelectedFolder('none')}>No Folder</button>
+          {(folders||[]).map(f => (
+            <div key={f.id} className={`folder-chip folder-chip--with-actions ${selectedFolder===f.id?'active':''}`}>
+              <button onClick={()=>setSelectedFolder(f.id)}>{f.name}</button>
+              <div className="folder-chip__actions">
+                <button aria-label="Rename folder" onClick={()=>renameFolder(f)}><i className="fas fa-pen"/></button>
+                <button aria-label="Delete folder" onClick={()=>deleteFolder(f.id)}><i className="fas fa-trash"/></button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button className="btn btn--outline btn--sm" onClick={addFolder}><i className="fas fa-folder-plus"/> New Folder</button>
       </div>
 
       {view==='kanban' && (
@@ -269,7 +324,7 @@ export default function TasksPage() {
       {view==='list' && (
         <div id="list-view" className="task-view active">
           <div className="task-list">
-            {(tasks||[]).map(t => {
+            {(filteredTasks||[]).map(t => {
               const due = t.dueDate ? new Date(t.dueDate) : null
               const dueStr = due ? due.toLocaleDateString(undefined,{month:'short', day:'numeric'}) : ''
               const pri = (t.priority||'medium')
@@ -384,7 +439,7 @@ export default function TasksPage() {
         <div id="timeline-view" className="task-view active">
           <div className="timeline">
             {(() => {
-              const items = (tasks||[]).filter(t=>t.dueDate).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate))
+              const items = (filteredTasks||[]).filter(t=>t.dueDate).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate))
               if (items.length===0) return <div className="deadline-empty">No tasks with due dates</div>
               const start = new Date(items[0].dueDate); start.setHours(0,0,0,0)
               const end = new Date(start); end.setDate(start.getDate()+14)
@@ -417,7 +472,7 @@ export default function TasksPage() {
         </div>
       )}
 
-      <AddEditTaskModal open={modalOpen} task={editing} onClose={()=>{ setModalOpen(false); setEditing(null) }} onSave={onSaveTask} />
+      <AddEditTaskModal open={modalOpen} task={editing} folders={folders} defaultFolderId={defaultFolderId} onClose={()=>{ setModalOpen(false); setEditing(null) }} onSave={onSaveTask} />
     </section>
   )
 }

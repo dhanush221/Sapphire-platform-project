@@ -51,6 +51,10 @@ export const api = {
   updateTask: (id, body) => http(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteTask: (id) => http(`/tasks/${id}`, { method: 'DELETE' }),
   reorderTasks: (updates) => http('/tasks/reorder', { method: 'PATCH', body: JSON.stringify({ updates }) }),
+  listFolders: () => http('/folders'),
+  createFolder: (body) => http('/folders', { method: 'POST', body: JSON.stringify(body) }),
+  updateFolder: (id, body) => http(`/folders/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteFolder: (id) => http(`/folders/${id}`, { method: 'DELETE' }),
 
   // Deadlines
   upcomingDeadlines: () => http('/deadlines/upcoming'),

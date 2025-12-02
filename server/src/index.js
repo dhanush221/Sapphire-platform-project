@@ -8,6 +8,7 @@ import tasksRouter from './routes/tasks.js';
 import deadlinesRouter from './routes/deadlines.js';
 import subtasksRouter from './routes/subtasks.js';
 import meetingsUploadRouter from './routes/meetings/upload.js';
+import foldersRouter from './routes/folders.js';
 import fs from 'fs';
 import { scheduleReminderJob } from '../jobs/reminders.js';
 import { authFromHeaders } from './middleware/auth.js';
@@ -44,6 +45,7 @@ app.use('/api/help-requests', helpRequestsRouter);
 app.use('/api/meetings', meetingsUploadRouter);
 app.use('/tasks', tasksRouter);
 app.use('/deadlines', deadlinesRouter);
+app.use('/folders', foldersRouter);
 app.use('/', subtasksRouter);
 
 // Serve built frontend under /app (avoid API route collisions)
