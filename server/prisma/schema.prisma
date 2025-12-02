@@ -12,11 +12,14 @@ model User {
   email        String        @unique
   passwordHash String
   name         String?
-  role         String        @default("user")
+  role         String        @default("student")
   tasks        Task[]
   folders      Folder[]
   meetings     Meeting[]
   helpRequests HelpRequest[]
+  resources    Resource[]
+  sessions     Session[]
+  passwordResets PasswordResetToken[]
   recipientDeadlines Deadline[] @relation("RecipientUser")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -32,6 +35,7 @@ model Task {
   id          Int          @id @default(autoincrement())
   userId      Int?
   user        User?        @relation(fields: [userId], references: [id])
+  createdByRole String     @default("student")
   folderId    Int?
   folder      Folder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
   title       String
@@ -105,11 +109,21 @@ model HelpRequest {
 }
 
 model Resource {
-  id        Int      @id @default(autoincrement())
-  title     String
-  url       String
-  category  String?
-  createdAt DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  resourceType    String   @default("Routine")
+  notes           String?
+  tags            String[]
+  originalFileName String
+  storagePath     String   @unique
+  fileSize        Int
+  mimeType        String
+  previewType     String   @default("file")
+  starred         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Deadline {
@@ -152,4 +166,24 @@ model Subtask {
   orderIndex Int     @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime @updatedAt
+}
+
+model PasswordResetToken {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
 }

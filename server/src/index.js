@@ -9,9 +9,12 @@ import deadlinesRouter from './routes/deadlines.js';
 import subtasksRouter from './routes/subtasks.js';
 import meetingsUploadRouter from './routes/meetings/upload.js';
 import foldersRouter from './routes/folders.js';
+import usersRouter from './routes/users.js';
+import authRouter from './routes/auth.js';
+import resourcesRouter from './routes/resources.js';
 import fs from 'fs';
 import { scheduleReminderJob } from '../jobs/reminders.js';
-import { authFromHeaders } from './middleware/auth.js';
+import { attachUserFromSession } from './middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +24,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
-app.use(authFromHeaders);
+app.use(attachUserFromSession);
 
 // CORS: allow all in dev by default; tighten in prod
 app.use(
@@ -36,6 +39,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'sapphire-platform-server' });
 });
 
+app.use('/api/auth', authRouter);
 // Convenience redirect for root to the SPA
 app.get('/', (_req, res) => {
   res.redirect('/app');
@@ -46,6 +50,8 @@ app.use('/api/meetings', meetingsUploadRouter);
 app.use('/tasks', tasksRouter);
 app.use('/deadlines', deadlinesRouter);
 app.use('/folders', foldersRouter);
+app.use('/users', usersRouter);
+app.use('/api/resources', resourcesRouter);
 app.use('/', subtasksRouter);
 
 // Serve built frontend under /app (avoid API route collisions)

@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Modal from '../components/Modal.jsx'
+import api from '../lib/api.js'
 
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const [helpOpen, setHelpOpen] = useState(false)
   const [notify, setNotify] = useState(false)
   const [helpType, setHelpType] = useState('Task Management')
@@ -17,6 +18,11 @@ export default function AppLayout() {
   const showSection = (id) => {
     const map = { dashboard: '/', tasks: '/tasks', deadlines: '/deadlines', meetings: '/meetings', resources: '/resources', settings: '/settings' }
     navigate(map[id] || '/')
+  }
+  const handleLogout = async () => {
+    try { await api.logout() } catch {}
+    logout()
+    navigate('/login')
   }
   const closeHelpModal = () => setHelpOpen(false)
   const submitHelpRequest = async () => {
@@ -45,11 +51,13 @@ export default function AppLayout() {
             <i className="fas fa-question-circle"></i>
             <span>Ask for Help</span>
           </button>
-          <Link to="/help-requests" className="help-btn" style={{marginLeft: 8, background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)'}}>
-            <i className="fas fa-life-ring"></i>
-            <span>Requests</span>
-          </Link>
-          <button className="help-btn" onClick={()=>{ logout(); navigate('/login') }} style={{marginLeft: 8}}>
+          {user?.role === 'supervisor' && (
+            <Link to="/help-requests" className="help-btn" style={{marginLeft: 8, background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)'}}>
+              <i className="fas fa-life-ring"></i>
+              <span>Requests</span>
+            </Link>
+          )}
+          <button className="help-btn" onClick={handleLogout} style={{marginLeft: 8}}>
             <i className="fas fa-sign-out-alt"></i>
             <span>Logout</span>
           </button>

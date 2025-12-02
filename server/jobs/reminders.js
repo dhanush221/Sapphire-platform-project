@@ -17,23 +17,19 @@ function buildTransporter() {
 export async function runReminderJob(logger = console) {
   const transporter = buildTransporter();
   const now = new Date();
+  const pollWindowMs = Number(process.env.REMINDER_POLL_SECONDS || 60) * 1000;
+  const windowUpper = new Date(now.getTime() + pollWindowMs);
 
-  // Find unsent reminders where deadline.dueAt - offsetMinutes <= now
+  // Find unsent reminders that have reached their trigger time (dueAt - offsetMinutes)
   const reminders = await prisma.deadlineReminder.findMany({
-    where: {
-      sentAt: null,
-      deadline: {
-        dueAt: {
-          lte: new Date(now.getTime() + 60 * 1000) // within next minute grace
-        }
-      }
-    },
+    where: { sentAt: null },
     include: { deadline: { include: { task: { include: { user: true } }, recipientUser: true } } }
   });
 
   const dueReminders = reminders.filter(r => {
     const triggerAt = new Date(r.deadline.dueAt.getTime() - r.offsetMinutes * 60 * 1000);
-    return triggerAt <= now;
+    // Look ahead one poll window to avoid missing reminders between ticks
+    return triggerAt <= windowUpper;
   });
 
   for (const r of dueReminders) {

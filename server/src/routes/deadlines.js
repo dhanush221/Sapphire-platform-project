@@ -1,7 +1,21 @@
 import express from 'express';
+import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { validateBody } from '../middleware/validate.js';
 
 const router = express.Router();
+
+const createDeadlineSchema = z.object({
+  taskId: z.coerce.number().int().positive(),
+  title: z.string().trim().optional().nullable(),
+  dueAt: z.union([z.string(), z.date()]),
+  reminders: z.array(z.coerce.number().int().min(0)).optional(),
+  recipientEmail: z.string().email().optional(),
+  recipientUserId: z.coerce.number().int().positive().optional()
+});
+
+router.use(requireAuth);
 
 // GET /deadlines/upcoming - deadlines due today and onwards, include task title
 router.get('/upcoming', async (req, res) => {
@@ -37,10 +51,9 @@ router.get('/upcoming', async (req, res) => {
 
 // POST /deadlines - create a deadline for a task with optional reminders
 // Body: { taskId, title?, dueAt, reminders?: number[] (minutes before) }
-router.post('/', async (req, res) => {
+router.post('/', validateBody(createDeadlineSchema), async (req, res) => {
   try {
-    const { taskId, title, dueAt, reminders, recipientEmail, recipientUserId } = req.body || {};
-    if (!taskId || !dueAt) return res.status(400).json({ error: 'taskId and dueAt are required' });
+    const { taskId, title, dueAt, reminders, recipientEmail, recipientUserId } = req.validatedBody;
     const user = req.user || { role: 'student', email: null };
     // If we can resolve the user, ensure the task belongs to them
     if (user.email) {

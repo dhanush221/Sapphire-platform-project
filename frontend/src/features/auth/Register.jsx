@@ -1,21 +1,35 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext.jsx'
+import api from '../../lib/api.js'
 
 export default function Register() {
   const nav = useNavigate()
+  const { login } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [role, setRole] = useState('student')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  function onSubmit(e) {
+  async function onSubmit(e) {
     e.preventDefault()
-    if (!name || !email || !password || !confirm) return alert('Please complete all fields.')
-    if (password !== confirm) return alert('Passwords do not match!')
-    localStorage.setItem('sapphireUser', JSON.stringify({ name, email, role }))
-    alert('Registration successful! Please log in.')
-    nav('/login')
+    setError('')
+    if (!name || !email || !password || !confirm) return setError('Please complete all fields.')
+    if (password !== confirm) return setError('Passwords do not match!')
+    setLoading(true)
+    try {
+      const resp = await api.register({ name, email, password, role })
+      if (!resp?.user) throw new Error('Registration failed')
+      login(resp.user)
+      nav('/')
+    } catch (err) {
+      setError(err?.message || 'Unable to register right now.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -52,7 +66,8 @@ export default function Register() {
                 <option value="supervisor">Supervisor</option>
               </select>
             </div>
-            <button type="submit" className="btn btn--primary btn--full-width">Register</button>
+            {error && <p className="error">{error}</p>}
+            <button type="submit" className="btn btn--primary btn--full-width" disabled={loading}>{loading ? 'Creating account…' : 'Register'}</button>
           </form>
 
           <p className="auth-footer">Already have an account? <Link to="/login">Login here</Link></p>

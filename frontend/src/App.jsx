@@ -4,6 +4,8 @@ import { useAuth } from './context/AuthContext.jsx'
 
 const Login = lazy(() => import('./features/auth/Login.jsx'))
 const Register = lazy(() => import('./features/auth/Register.jsx'))
+const ForgotPassword = lazy(() => import('./features/auth/ForgotPassword.jsx'))
+const ResetPassword = lazy(() => import('./features/auth/ResetPassword.jsx'))
 const AppLayout = lazy(() => import('./layouts/AppLayout.jsx'))
 const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage.jsx'))
 const TasksPage = lazy(() => import('./features/tasks/TasksPage.jsx'))
@@ -26,6 +28,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
