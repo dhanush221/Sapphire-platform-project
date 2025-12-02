@@ -4,15 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { z } from 'zod';
+import { prisma } from '../prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { resourceTypeEnum, validateParams } from '../middleware/validate.js';
 
 const router = express.Router();
-const resourcesDir = path.resolve('uploads/resources');
+const resourcesDir = path.resolve(process.env.RESOURCE_UPLOAD_DIR || 'uploads/resources');
 try { fs.mkdirSync(resourcesDir, { recursive: true }); } catch {}
-const dataDir = path.resolve('.data');
-try { fs.mkdirSync(dataDir, { recursive: true }); } catch {}
-const storePath = path.join(dataDir, 'resources.json');
 const MAX_FILE_SIZE = 60 * 1024 * 1024; // 60MB
 
 const storage = multer.diskStorage({
@@ -77,19 +75,6 @@ const officialResources = [
   }
 ];
 
-async function readStore() {
-  try {
-    const raw = await fsPromises.readFile(storePath, 'utf8');
-    return JSON.parse(raw || '{"resources":[]}');
-  } catch {
-    return { resources: [] };
-  }
-}
-
-async function writeStore(store) {
-  await fsPromises.writeFile(storePath, JSON.stringify(store, null, 2), 'utf8');
-}
-
 function inferPreviewType(mime, filename) {
   const lower = (mime || '').toLowerCase();
   const ext = (path.extname(filename || '').toLowerCase() || '').replace('.', '');
@@ -126,11 +111,13 @@ router.get('/official', (_req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const store = await readStore();
-    const items = (store.resources || []).filter(r => r.userId === req.user.id).sort((a, b) => {
-      if (a.starred && !b.starred) return -1;
-      if (!a.starred && b.starred) return 1;
-      return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+    const items = await prisma.resource.findMany({
+      where: { userId: req.user.id },
+      orderBy: [
+        { starred: 'desc' },
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' }
+      ]
     });
     return res.json({ resources: items.map(shape) });
   } catch (err) {
@@ -149,28 +136,25 @@ router.post('/', upload.single('file'), async (req, res) => {
     const body = parsed.data;
     const tags = normalizeTags(body.tags);
     const now = new Date().toISOString();
-    const store = await readStore();
-    const nextId = (store.resources || []).reduce((max, r) => Math.max(max, r.id || 0), 0) + 1;
     const storagePath = path.posix.join(String(req.user.id), req.file.filename);
-    const resource = {
-      id: nextId,
-      userId: req.user.id,
-      title: body.title,
-      resourceType: body.resourceType || 'Routine',
-      notes: body.notes || '',
-      tags,
-      originalFileName: req.file.originalname || req.file.filename,
-      storagePath,
-      fileSize: req.file.size || 0,
-      mimeType: req.file.mimetype || 'application/octet-stream',
-      previewType: inferPreviewType(req.file.mimetype, req.file.originalname),
-      starred: false,
-      createdAt: now,
-      updatedAt: now
-    };
-    store.resources = [...(store.resources || []), resource];
-    await writeStore(store);
-    return res.status(201).json({ resource: shape(resource), message: 'Resource uploaded.' });
+    const created = await prisma.resource.create({
+      data: {
+        userId: req.user.id,
+        title: body.title,
+        resourceType: body.resourceType || 'Routine',
+        notes: body.notes || '',
+        tags,
+        originalFileName: req.file.originalname || req.file.filename,
+        storagePath,
+        fileSize: req.file.size || 0,
+        mimeType: req.file.mimetype || 'application/octet-stream',
+        previewType: inferPreviewType(req.file.mimetype, req.file.originalname),
+        starred: false,
+        createdAt: new Date(now),
+        updatedAt: new Date(now)
+      }
+    });
+    return res.status(201).json({ resource: shape(created), message: 'Resource uploaded.' });
   } catch (err) {
     console.error('POST /api/resources failed:', err);
     return res.status(500).json({ error: 'Upload failed.' });
@@ -183,19 +167,22 @@ router.patch('/:id', validateParams(idParamSchema), async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid payload.' });
     }
-    const store = await readStore();
-    const resource = (store.resources || []).find(r => r.id === req.validatedParams.id);
+    const resource = await prisma.resource.findUnique({ where: { id: req.validatedParams.id } });
     if (!resource) return res.status(404).json({ error: 'Resource not found' });
     if (resource.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const updates = parsed.data;
-    if (updates.title !== undefined) resource.title = updates.title;
-    if (updates.notes !== undefined) resource.notes = updates.notes ?? '';
-    if (updates.tags !== undefined) resource.tags = normalizeTags(updates.tags);
-    if (updates.starred !== undefined) resource.starred = updates.starred;
-    if (updates.resourceType) resource.resourceType = updates.resourceType;
-    resource.updatedAt = new Date().toISOString();
-    await writeStore(store);
-    return res.json({ resource: shape(resource) });
+    const data = {};
+    if (updates.title !== undefined) data.title = updates.title;
+    if (updates.notes !== undefined) data.notes = updates.notes ?? '';
+    if (updates.tags !== undefined) data.tags = normalizeTags(updates.tags);
+    if (updates.starred !== undefined) data.starred = updates.starred;
+    if (updates.resourceType) data.resourceType = updates.resourceType;
+    data.updatedAt = new Date();
+    const updated = await prisma.resource.update({
+      where: { id: resource.id },
+      data
+    });
+    return res.json({ resource: shape(updated) });
   } catch (err) {
     console.error('PATCH /api/resources failed:', err);
     return res.status(500).json({ error: 'Unable to update resource.' });
@@ -204,14 +191,10 @@ router.patch('/:id', validateParams(idParamSchema), async (req, res) => {
 
 router.delete('/:id', validateParams(idParamSchema), async (req, res) => {
   try {
-    const store = await readStore();
-    const resources = store.resources || [];
-    const idx = resources.findIndex(r => r.id === req.validatedParams.id);
-    if (idx === -1) return res.status(404).json({ error: 'Resource not found' });
-    const resource = resources[idx];
+    const resource = await prisma.resource.findUnique({ where: { id: req.validatedParams.id } });
+    if (!resource) return res.status(404).json({ error: 'Resource not found' });
     if (resource.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-    resources.splice(idx, 1);
-    await writeStore(store);
+    await prisma.resource.delete({ where: { id: resource.id } });
     try {
       await fsPromises.unlink(path.join(resourcesDir, resource.storagePath));
     } catch (err) {
@@ -226,8 +209,7 @@ router.delete('/:id', validateParams(idParamSchema), async (req, res) => {
 
 router.get('/:id/download', validateParams(idParamSchema), async (req, res) => {
   try {
-    const store = await readStore();
-    const resource = (store.resources || []).find(r => r.id === req.validatedParams.id);
+    const resource = await prisma.resource.findUnique({ where: { id: req.validatedParams.id } });
     if (!resource) return res.status(404).json({ error: 'Resource not found' });
     if (resource.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const absolutePath = path.join(resourcesDir, resource.storagePath);
@@ -243,8 +225,7 @@ router.get('/:id/download', validateParams(idParamSchema), async (req, res) => {
 
 router.get('/:id/preview', validateParams(idParamSchema), async (req, res) => {
   try {
-    const store = await readStore();
-    const resource = (store.resources || []).find(r => r.id === req.validatedParams.id);
+    const resource = await prisma.resource.findUnique({ where: { id: req.validatedParams.id } });
     if (!resource) return res.status(404).json({ error: 'Resource not found' });
     if (resource.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const absolutePath = path.join(resourcesDir, resource.storagePath);

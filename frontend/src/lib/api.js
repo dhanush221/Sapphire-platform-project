@@ -17,6 +17,11 @@ export function resolveApiUrl(resourcePath = '') {
   return `${API_BASE}${path}`
 }
 
+let unauthorizedHandler = null;
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = typeof fn === 'function' ? fn : null;
+}
+
 async function http(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
   const headers = { ...(options.headers || {}) }
@@ -38,6 +43,9 @@ async function http(path, options = {}) {
     const hint = !ct.includes('application/json') && sameOrigin
       ? 'Hint: In dev, set VITE_API_BASE to your backend URL (e.g., http://localhost:5000).'
       : ''
+    if (res.status === 401 && typeof unauthorizedHandler === 'function') {
+      try { unauthorizedHandler() } catch {}
+    }
     throw new Error(data?.error || bodySnippet || `${res.status} ${res.statusText}` + (hint ? `\n${hint}` : ''))
   }
   // Return parsed data when JSON, or an empty object otherwise

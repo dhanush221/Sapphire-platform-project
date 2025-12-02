@@ -19,16 +19,45 @@ export function useFolders(initial = [], options = {}) {
       const data = await api.listFolders(targetEmail ? { forEmail: targetEmail } : undefined)
       setFolders(data)
     } catch (e) {
-      setError(e)
+      const err = e instanceof Error ? e : new Error('Failed to load folders')
+      console.error(err)
+      setError(err)
     } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { refresh({ forEmail: currentEmail }) }, [refresh])
   useEffect(() => { emailRef.current = currentEmail }, [currentEmail])
 
-  const create = useCallback(async (body, opts = {}) => { await api.createFolder(body); await refresh({ forEmail: opts.forEmail ?? currentEmail }) }, [refresh, currentEmail])
-  const update = useCallback(async (id, body, opts = {}) => { await api.updateFolder(id, body); await refresh({ forEmail: opts.forEmail ?? currentEmail }) }, [refresh, currentEmail])
-  const remove = useCallback(async (id, opts = {}) => { await api.deleteFolder(id); await refresh({ forEmail: opts.forEmail ?? currentEmail }) }, [refresh, currentEmail])
+  const create = useCallback(async (body, opts = {}) => {
+    try {
+      await api.createFolder(body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to create folder')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
+  const update = useCallback(async (id, body, opts = {}) => {
+    try {
+      await api.updateFolder(id, body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to update folder')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
+  const remove = useCallback(async (id, opts = {}) => {
+    try {
+      await api.deleteFolder(id)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to delete folder')
+      setError(err)
+      throw err
+    }
+  }, [refresh, currentEmail])
 
   return { folders, loading, error, refresh, create, update, remove, currentEmail }
 }

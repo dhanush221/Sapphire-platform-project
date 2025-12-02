@@ -19,7 +19,8 @@ export function getMailer() {
 export async function sendMail(options) {
   const transporter = getMailer();
   if (!transporter) {
-    throw new Error('Email transport is not configured (set SMTP_USER/SMTP_PASS).');
+    console.warn('[mailer] Email transport is not configured; returning stub response. Set SMTP_USER/SMTP_PASS to enable.');
+    return { mock: true };
   }
   return transporter.sendMail({ from, ...options });
 }

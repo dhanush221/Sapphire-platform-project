@@ -112,13 +112,17 @@ router.post('/forgot-password', validateBody(forgotSchema), async (req, res) => 
 
     const resetLink = `${RESET_URL_BASE}?token=${encodeURIComponent(token)}`;
     try {
-      await sendMail({
+      const mailResult = await sendMail({
         to: email,
         subject: 'Reset your Sapphire password',
         html: `<p>You requested to reset your Sapphire password.</p>
                <p><a href="${resetLink}">Click here to reset your password</a> (valid for ${RESET_EXP_MINUTES} minutes).</p>
                <p>If you did not request this, you can ignore this email.</p>`
       });
+      if (mailResult?.mock) {
+        console.warn('[auth] Email not configured; returning reset link in response for local testing.');
+        return res.json({ ok: true, resetLink, note: 'Email not configured; use resetLink directly (dev only).' });
+      }
     } catch (mailErr) {
       console.error('Failed to send reset email:', mailErr);
       return res.status(500).json({ error: 'Could not send reset email. Check email configuration.' });

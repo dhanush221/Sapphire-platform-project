@@ -19,7 +19,9 @@ export function useTasks(initial = [], options = {}) {
       const data = await api.listTasks(targetEmail ? { forEmail: targetEmail } : undefined)
       setTasks(data)
     } catch (e) {
-      setError(e)
+      const err = e instanceof Error ? e : new Error('Failed to load tasks')
+      console.error(err)
+      setError(err)
     } finally { setLoading(false) }
   }, [])
 
@@ -27,20 +29,44 @@ export function useTasks(initial = [], options = {}) {
   useEffect(() => { emailRef.current = currentEmail }, [currentEmail])
 
   const create = useCallback(async (body, opts = {}) => {
-    await api.createTask(body)
-    await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    try {
+      await api.createTask(body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to create task')
+      setError(err)
+      throw err
+    }
   }, [refresh, currentEmail])
   const update = useCallback(async (id, body, opts = {}) => {
-    await api.updateTask(id, body)
-    await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    try {
+      await api.updateTask(id, body)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to update task')
+      setError(err)
+      throw err
+    }
   }, [refresh, currentEmail])
   const remove = useCallback(async (id, opts = {}) => {
-    await api.deleteTask(id)
-    await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    try {
+      await api.deleteTask(id)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to delete task')
+      setError(err)
+      throw err
+    }
   }, [refresh, currentEmail])
   const reorder = useCallback(async (updates, opts = {}) => {
-    await api.reorderTasks(updates)
-    await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    try {
+      await api.reorderTasks(updates)
+      await refresh({ forEmail: opts.forEmail ?? currentEmail })
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Failed to reorder tasks')
+      setError(err)
+      throw err
+    }
   }, [refresh, currentEmail])
 
   return { tasks, loading, error, refresh, create, update, remove, reorder, currentEmail }

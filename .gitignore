@@ -9,4 +9,5 @@ frontend/dist
 # Environment and temp files
 server/.env
 server/uploads/*
+.data/
 tmp/
