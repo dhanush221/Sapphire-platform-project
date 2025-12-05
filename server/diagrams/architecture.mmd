@@ -1,0 +1,25 @@
+graph TD
+  subgraph Client
+    A["Web SPA<br/>React/Vite"]
+  end
+
+  subgraph API["API Layer (Express)"]
+    C["Middleware<br/>Sessions/CORS/Auth"]
+    B["Routes<br/>Auth/Tasks/Deadlines/Meetings/Resources"]
+  end
+
+  subgraph Services
+    D["Prisma Client<br/>PostgreSQL"]
+    E["File Storage<br/>Uploads/Recordings"]
+    F["Jobs<br/>Reminder Scheduler"]
+  end
+
+  subgraph Data
+    G["(PostgreSQL DB)"]
+  end
+
+  A -->|HTTPS/JSON| C --> B
+  B --> D
+  B --> E
+  F --> B
+  D --> G

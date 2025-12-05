@@ -30,7 +30,9 @@ export function useFolders(initial = [], options = {}) {
 
   const create = useCallback(async (body, opts = {}) => {
     try {
-      await api.createFolder(body)
+      const payload = { ...body }
+      if (payload.forEmail == null) delete payload.forEmail // avoid sending null to zod schema
+      await api.createFolder(payload)
       await refresh({ forEmail: opts.forEmail ?? currentEmail })
     } catch (e) {
       const err = e instanceof Error ? e : new Error('Failed to create folder')

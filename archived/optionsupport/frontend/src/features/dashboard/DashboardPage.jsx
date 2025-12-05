@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTasks } from '../../lib/hooks/useTasks';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useMoods } from '../../lib/hooks/useMoods.js';
-import api from '../../lib/api.js';
 
 const ENERGY_LEVELS = [
   { value: 1, label: 'Very Low Energy', color: '#ef4444' },
@@ -19,10 +18,6 @@ export default function DashboardPage() {
   const { entries: moodEntries, trendPoints, loading: moodLoading, saving: moodSaving, error: moodError, refresh: refreshMoods, create: createMoodEntry } = useMoods({ autoRefresh: true });
   const [mood, setMood] = useState(3);
   const [energy, setEnergy] = useState(3);
-  const [breakMinutes, setBreakMinutes] = useState(10);
-  const [showDetails, setShowDetails] = useState(false);
-  const [reminderAt, setReminderAt] = useState(null);
-  const reminderRef = useRef(null);
 
   const todayList = useMemo(() => {
     const now = new Date();
@@ -61,45 +56,7 @@ export default function DashboardPage() {
     }
   };
 
-  const supportTip = useMemo(() => supportTipFor(mood, energy, moodEntries?.[0], breakMinutes), [mood, energy, moodEntries, breakMinutes]);
-
-  const openHelpModal = () => {
-    const helpButton = document.getElementById('askForHelp');
-    if (helpButton) helpButton.click();
-  };
-
-  const setBreakReminder = () => {
-    if (reminderRef.current) clearTimeout(reminderRef.current);
-    const delayMs = Math.max(1, breakMinutes) * 60 * 1000;
-    const fireAt = Date.now() + delayMs;
-    setReminderAt(fireAt);
-    reminderRef.current = setTimeout(() => {
-      const body = `Time to take a ${breakMinutes}-minute break.`;
-      if (typeof Notification !== 'undefined') {
-        if (Notification.permission === 'granted') {
-          new Notification('Break reminder', { body });
-        } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission().then(p => {
-            if (p === 'granted') new Notification('Break reminder', { body });
-            else alert(body);
-          }).catch(() => alert(body));
-        } else {
-          alert(body);
-        }
-      } else {
-        alert(body);
-      }
-      setReminderAt(null);
-      reminderRef.current = null;
-    }, delayMs);
-
-    // Persist reminder server-side for email fallback
-    api.createMoodReminder({ minutes: breakMinutes, mood, energy }).catch(() => {});
-  };
-
-  useEffect(() => () => {
-    if (reminderRef.current) clearTimeout(reminderRef.current);
-  }, []);
+  const supportTip = useMemo(() => supportTipFor(mood, energy, moodEntries?.[0]), [mood, energy, moodEntries]);
 
   return (
     <section id="dashboard" className="content-section active">
@@ -170,68 +127,42 @@ export default function DashboardPage() {
                     <div className="support-icon"><i className="fas fa-lightbulb" aria-hidden /></div>
                     <div>
                       <div className="support-text">{supportTip.text}</div>
-                      <div className="break-selector">
-                        <label htmlFor="breakLength">Break length:</label>
-                        <select id="breakLength" value={breakMinutes} onChange={e => setBreakMinutes(Number(e.target.value))}>
-                          {[10, 15, 20, 30, 45, 60].map(m => <option key={m} value={m}>{m} min</option>)}
-                        </select>
-                      </div>
-                      <div className="break-reminder-row">
-                        <button className="btn btn--secondary btn--sm" onClick={setBreakReminder}>Set break reminder</button>
-                        {reminderAt && (
-                          <span className="reminder-hint">
-                            Reminder at {new Date(reminderAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        )}
-                      </div>
-                      {supportTip.cta && (
-                        supportTip.cta.action ? (
-                          <button className="support-cta support-cta-btn" onClick={supportTip.cta.action}>{supportTip.cta.label}</button>
-                        ) : (
-                          <Link to={supportTip.cta.href} className="support-cta">{supportTip.cta.label}</Link>
-                        )
-                      )}
+                      {supportTip.cta && <Link to={supportTip.cta.href} className="support-cta">{supportTip.cta.label}</Link>}
                     </div>
                   </div>
                 )}
-                <details className="mood-collapse" open={showDetails} onToggle={e => setShowDetails(e.target.open)}>
-                  <summary>
-                    <span>{showDetails ? 'Hide check-in history' : 'Show check-in history'}</span>
-                    <span className="mood-block-hint">{moodEntries?.length || 0} logged</span>
-                  </summary>
-                  <div className="mood-summary">
-                    <div className="mood-history-card">
-                      <div className="mood-block-header">
-                        <span>Last 7 check-ins</span>
-                        <span className="mood-block-hint">{moodEntries?.length || 0} logged</span>
-                      </div>
-                      <div className="mood-history">
-                        {(moodEntries || []).length === 0 ? (
-                          <div className="mood-history-empty">No check-ins yet. Log today’s mood to start your trend.</div>
-                        ) : (
-                          (moodEntries || []).map(entry => (
-                            <div key={entry.id} className="mood-history-row">
-                              <div>
-                                <div className="mood-history-date">{formatDate(entry.createdAt)}</div>
-                                <div className="mood-history-time">{formatTime(entry.createdAt)}</div>
-                              </div>
-                              <div className="mood-history-values">
-                                <span className="mood-chip">{emojiFor(entry.mood)} Mood {entry.mood}</span>
-                                <span className="energy-chip">⚡ Energy {entry.energy}</span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                <div className="mood-summary">
+                  <div className="mood-history-card">
+                    <div className="mood-block-header">
+                      <span>Last 7 check-ins</span>
+                      <span className="mood-block-hint">{moodEntries?.length || 0} logged</span>
                     </div>
-                    <div className="mood-trend-card">
-                      <div className="mood-block-header">
-                        <span>Trend (7 days)</span>
-                      </div>
-                      <MoodSparkline points={trendPoints} />
+                    <div className="mood-history">
+                      {(moodEntries || []).length === 0 ? (
+                        <div className="mood-history-empty">No check-ins yet. Log today’s mood to start your trend.</div>
+                      ) : (
+                        (moodEntries || []).map(entry => (
+                          <div key={entry.id} className="mood-history-row">
+                            <div>
+                              <div className="mood-history-date">{formatDate(entry.createdAt)}</div>
+                              <div className="mood-history-time">{formatTime(entry.createdAt)}</div>
+                            </div>
+                            <div className="mood-history-values">
+                              <span className="mood-chip">{emojiFor(entry.mood)} Mood {entry.mood}</span>
+                              <span className="energy-chip">⚡ Energy {entry.energy}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                </details>
+                  <div className="mood-trend-card">
+                    <div className="mood-block-header">
+                      <span>Trend (7 days)</span>
+                    </div>
+                    <MoodSparkline points={trendPoints} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -249,7 +180,10 @@ export default function DashboardPage() {
             <div className="card__header"><h3><i className="fas fa-sitemap"></i> Platform Overview</h3></div>
             <div className="card__body">
               <div className="architecture-wrapper">
-                <div className="image-fallback" aria-hidden="true" style={{minHeight: 200}} />
+                <img src="https://ppl-ai-code-interpreter-files.s3.amazonaws.com/web/direct-files/7e33f05c8d808293b50d3f649bf25bc8/3be4b797-0364-435f-a482-491a0e47e812/94050b70.png" alt="Platform Architecture Diagram" className="architecture-diagram" onError={(e)=>{e.currentTarget.style.display='none'; const next=e.currentTarget.nextElementSibling; if(next) next.style.display='block'}} />
+                <div className="image-fallback" style={{display:'none'}}>
+                  <p>Platform Architecture: Central hub connecting Organization Tools, Deadline Management, Meeting Transcription, Resource Library, Flexible Workflows, and Optional Supports.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -257,7 +191,10 @@ export default function DashboardPage() {
             <div className="card__header"><h3><i className="fas fa-route"></i> Your Internship Journey</h3></div>
             <div className="card__body">
               <div className="journey-wrapper">
-                <div className="image-fallback" aria-hidden="true" style={{minHeight: 320}} />
+                <img src="https://ppl-ai-code-interpreter-files.s3.amazonaws.com/web/direct-files/7e33f05c8d808293b50d3f649bf25bc8/71ff4dd6-6d52-4e91-a314-33a234d2d592/40c04daf.png" alt="Student User Journey" className="journey-diagram" onError={(e)=>{e.currentTarget.style.display='none'; const next=e.currentTarget.nextElementSibling; if(next) next.style.display='block'}} />
+                <div className="image-fallback" style={{display:'none'}}>
+                  <p>Your journey through the platform: Onboarding → Daily Check-ins → Task Management → Meeting Support → Resources Access → Weekly Review</p>
+                </div>
               </div>
             </div>
           </div>
@@ -279,52 +216,27 @@ function formatTime(value) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-function supportTipFor(mood, energy, lastEntry, breakMinutes = 10) {
+function supportTipFor(mood, energy, lastEntry) {
   const lowThreshold = 2;
-  const highThreshold = 4;
   const currentLow = mood <= lowThreshold || energy <= lowThreshold;
   const lastLow = lastEntry && (lastEntry.mood <= lowThreshold || lastEntry.energy <= lowThreshold);
-  const currentHigh = mood >= highThreshold || energy >= highThreshold;
-
-  if (currentLow) {
-    if (mood <= lowThreshold && energy <= lowThreshold) {
-      return {
-        text: `Mood and energy look low. Set a ${breakMinutes}-minute break reminder, hydrate, and step away from the screen.`,
-        cta: { href: '/resources', label: `Browse resources for a ${breakMinutes}-min reset` }
-      };
-    }
-    if (energy <= lowThreshold) {
-      return {
-        text: `Energy is low. Set a ${breakMinutes}-minute break reminder and try a quick stretch or walk to reset.`,
-        cta: { href: '/tasks', label: `Schedule a ${breakMinutes}-minute break` }
-      };
-    }
+  if (!currentLow && !lastLow) return null;
+  if (mood <= lowThreshold && energy <= lowThreshold) {
     return {
-      text: 'Mood seems low. Write one small win or ask for help if you need it.',
-      cta: { label: 'Ask for help', action: () => {
-        const helpButton = document.getElementById('askForHelp');
-        if (helpButton) helpButton.click();
-      }}
+      text: 'Mood and energy look low. Take a 10-minute break, hydrate, and step away from the screen.',
+      cta: { href: '/resources', label: 'Browse calming resources' }
     };
   }
-
-  if (currentHigh) {
-    if (energy >= highThreshold && mood >= highThreshold) {
-      return { text: 'Great energy and mood! Tackle a high-priority task while momentum is high.' };
-    }
-    if (energy >= highThreshold) {
-      return { text: 'Energy is high—use it for focused work, then cool down with a short walk.' };
-    }
-    if (mood >= highThreshold) {
-      return { text: 'Mood is great! Share a win or support a teammate.' };
-    }
+  if (energy <= lowThreshold) {
+    return {
+      text: 'Energy is low. Try a quick stretch or short walk to reset.',
+      cta: { href: '/tasks', label: 'Schedule a 10-minute break' }
+    };
   }
-
-  if (lastLow) {
-    return { text: 'Nice rebound from your last low day—keep the momentum going.' };
-  }
-
-  return { text: 'You are doing well. Keep a steady pace and remember short breaks to stay fresh.' };
+  return {
+    text: 'Mood seems low. Write one small win or ask for help if you need it.',
+    cta: { href: '/help-requests', label: 'Ask for help' }
+  };
 }
 
 function MoodSparkline({ points = [] }) {

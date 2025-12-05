@@ -1,0 +1,20 @@
+flowchart TD
+  %% Task lifecycle
+  T0["Task Created<br/>title, priority, due"]
+  T1["Optional Folder/Category"]
+  T2["Deadline Linked"]
+  T3["Reminder Offsets Scheduled"]
+  T4["Task In Progress"]
+  T5["Task Completed"]
+
+  T0 --> T1 --> T2 --> T3 --> T4 --> T5
+
+  %% Meeting upload to reminders
+  M0["Meeting Audio Uploaded"]
+  M1["Stored in uploads/recordings"]
+  M2["Transcription + Summary"]
+  M3["Action Items Captured"]
+  M4["Deadlines/Reminders Set"]
+  M5["Notifications Sent"]
+
+  M0 --> M1 --> M2 --> M3 --> M4 --> M5

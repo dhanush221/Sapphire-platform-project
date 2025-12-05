@@ -2,11 +2,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-  output   = "../ERD.svg"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -26,7 +21,6 @@ model User {
   sessions     Session[]
   passwordResets PasswordResetToken[]
   moodEntries  MoodEntry[]
-  breakReminders BreakReminder[]
   recipientDeadlines Deadline[] @relation("RecipientUser")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -185,7 +179,6 @@ model Session {
   lastUsedAt DateTime @updatedAt
 }
 
-
 model PasswordResetToken {
   id         Int      @id @default(autoincrement())
   userId     Int
@@ -206,18 +199,4 @@ model MoodEntry {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
-}
-
-model BreakReminder {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  minutes   Int
-  remindAt  DateTime
-  mood      Int?
-  energy    Int?
-  sentAt    DateTime?
-  createdAt DateTime @default(now())
-
-  @@index([remindAt])
 }

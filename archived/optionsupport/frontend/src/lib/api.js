@@ -113,7 +113,6 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : ''
     return http(`/api/moods/trends${suffix}`)
   },
-  createMoodReminder: (body) => http('/api/moods/reminders', { method: 'POST', body: JSON.stringify(body) }),
 
   // Subtasks
   listSubtasks: (taskId) => http(`/tasks/${taskId}/subtasks`),
