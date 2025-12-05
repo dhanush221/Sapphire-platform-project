@@ -58,7 +58,6 @@ export default function AppLayout() {
             </Link>
           )}
           <button className="help-btn" onClick={handleLogout} style={{marginLeft: 8}}>
-          <button className="help-btn" onClick={()=>{ logout(); navigate('/login') }} style={{marginLeft: 8}}>
             <i className="fas fa-sign-out-alt"></i>
             <span>Logout</span>
           </button>

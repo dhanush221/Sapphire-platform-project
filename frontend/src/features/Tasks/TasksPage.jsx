@@ -7,6 +7,23 @@ import { useFolders } from '../../lib/hooks/useFolders'
 import { api } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext.jsx'
 
+const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
+
+function hexToRgba(hex, alpha = 0.3) {
+  if (!hex || typeof hex !== 'string') return null;
+  const normalized = hex.trim().replace(/^#/, '');
+  if (![3, 6].includes(normalized.length)) return null;
+  const value = normalized.length === 3
+    ? normalized.split('').map(ch => ch + ch).join('')
+    : normalized;
+  const intVal = Number.parseInt(value, 16);
+  if (Number.isNaN(intVal)) return null;
+  const r = (intVal >> 16) & 255;
+  const g = (intVal >> 8) & 255;
+  const b = intVal & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChanged }) {
   const dueDateObj = task.dueDate ? new Date(task.dueDate) : null
   const due = dueDateObj ? dueDateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
@@ -185,6 +202,10 @@ export default function TasksPage() {
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [studentError, setStudentError] = useState(null)
   const [selectedStudent, setSelectedStudent] = useState(null)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderColor, setNewFolderColor] = useState('#4f46e5')
+  const [useFolderColor, setUseFolderColor] = useState(false)
+  const [showFolderForm, setShowFolderForm] = useState(false)
 
   // Sync view with URL query (?view=kanban|list|calendar)
   useEffect(() => {
@@ -233,6 +254,23 @@ export default function TasksPage() {
 
   const activeAssigneeEmail = isSupervisor ? (selectedStudent?.email || null) : null
   const canManageTasks = !isSupervisor || !!activeAssigneeEmail
+
+  const folderById = useMemo(() => {
+    const map = {}
+    ;(folders || []).forEach(f => { if (f?.id != null) map[f.id] = f })
+    return map
+  }, [folders])
+
+  const folderChipStyle = useCallback((folder, isActive) => {
+    if (!folder?.color) return {}
+    const subtle = hexToRgba(folder.color, 0.18) || folder.color
+    const outline = hexToRgba(folder.color, 0.45) || folder.color
+    return {
+      background: isActive ? folder.color : subtle,
+      borderColor: outline,
+      color: isActive ? 'var(--color-white)' : 'var(--color-text)'
+    }
+  }, [])
 
   const filteredTasks = useMemo(() => {
     if (isSupervisor && !activeAssigneeEmail) return []
@@ -293,9 +331,19 @@ export default function TasksPage() {
   const openEdit = (t) => { setEditing(t); setModalOpen(true) }
   const onDelete = async (t) => { if (confirm('Delete this task?')) { await remove(t.id, { forEmail: activeAssigneeEmail }) } }
   const addFolder = async () => {
-    const name = prompt('Folder name')
-    if (!name) return
-    try { await createFolder({ name: name.trim(), forEmail: activeAssigneeEmail }, { forEmail: activeAssigneeEmail }) } catch (e) { alert(e?.message || 'Failed to create folder') }
+    if (!newFolderName.trim()) { alert('Folder name is required'); return }
+    if (useFolderColor && newFolderColor && !HEX_COLOR_REGEX.test(newFolderColor)) {
+      alert('Folder color should be a hex code like #4F46E5');
+      return;
+    }
+    const payload = { name: newFolderName.trim(), forEmail: activeAssigneeEmail }
+    if (useFolderColor && newFolderColor) payload.color = newFolderColor
+    try {
+      await createFolder(payload, { forEmail: activeAssigneeEmail })
+      setNewFolderName('')
+      setUseFolderColor(false)
+      setShowFolderForm(false)
+    } catch (e) { alert(e?.message || 'Failed to create folder') }
   }
   const deleteFolder = async (id) => {
     if (!confirm('Delete this folder? Tasks inside will be left unfiled.')) return
@@ -304,7 +352,17 @@ export default function TasksPage() {
   const renameFolder = async (folder) => {
     const name = prompt('New folder name', folder.name)
     if (!name) return
-    try { await updateFolder(folder.id, { name: name.trim() }, { forEmail: activeAssigneeEmail }) } catch (e) { alert(e?.message || 'Failed to rename folder') }
+    const colorInput = prompt('Update color (hex like #4F46E5). Leave blank to remove color.', folder.color || '')
+    const payload = { name: name.trim() }
+    if (colorInput !== null) {
+      const trimmed = colorInput.trim()
+      if (trimmed && !HEX_COLOR_REGEX.test(trimmed)) {
+        alert('Color must be a hex value like #3366FF');
+        return;
+      }
+      if (trimmed || folder.color) payload.color = trimmed || null
+    }
+    try { await updateFolder(folder.id, payload, { forEmail: activeAssigneeEmail }) } catch (e) { alert(e?.message || 'Failed to rename folder') }
   }
   const onSelectStudent = (email) => {
     if (!email) { setSelectedStudent(null); return }
@@ -353,17 +411,65 @@ export default function TasksPage() {
         <div className="folder-chips">
           <button className={`folder-chip ${selectedFolder==='all'?'active':''}`} onClick={()=>setSelectedFolder('all')} disabled={!canManageTasks}>All</button>
           <button className={`folder-chip ${selectedFolder==='none'?'active':''}`} onClick={()=>setSelectedFolder('none')} disabled={!canManageTasks}>No Folder</button>
-          {(folders||[]).map(f => (
-            <div key={f.id} className={`folder-chip folder-chip--with-actions ${selectedFolder===f.id?'active':''}`}>
-              <button onClick={()=>setSelectedFolder(f.id)} disabled={!canManageTasks}>{f.name}</button>
-              <div className="folder-chip__actions">
-                <button aria-label="Rename folder" onClick={()=>renameFolder(f)} disabled={!canManageTasks}><i className="fas fa-pen"/></button>
-                <button aria-label="Delete folder" onClick={()=>deleteFolder(f.id)} disabled={!canManageTasks}><i className="fas fa-trash"/></button>
+          {(folders||[]).map(f => {
+            const chipStyle = folderChipStyle(f, selectedFolder===f.id)
+            return (
+              <div key={f.id} className={`folder-chip folder-chip--with-actions ${selectedFolder===f.id?'active':''}`} style={chipStyle}>
+                <button onClick={()=>setSelectedFolder(f.id)} disabled={!canManageTasks} title={f.color ? `Color ${f.color}` : undefined}>
+                  {f.color && <span className="folder-chip__swatch" style={{ background: f.color }}/>}
+                  {f.name}
+                </button>
+                <div className="folder-chip__actions">
+                  <button aria-label="Rename folder" onClick={()=>renameFolder(f)} disabled={!canManageTasks}><i className="fas fa-pen"/></button>
+                  <button aria-label="Delete folder" onClick={()=>deleteFolder(f.id)} disabled={!canManageTasks}><i className="fas fa-trash"/></button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
-        <button className="btn btn--outline btn--sm" onClick={addFolder} disabled={!canManageTasks}><i className="fas fa-folder-plus"/> New Folder</button>
+        <div className="folder-create-trigger">
+          <button className="btn btn--outline btn--sm" type="button" onClick={()=>setShowFolderForm(v=>!v)} disabled={!canManageTasks}>
+            <i className="fas fa-folder-plus"/> Add Folder
+          </button>
+          {showFolderForm && (
+            <div className="folder-create-card">
+              <form onSubmit={(e)=>{ e.preventDefault(); addFolder() }}>
+                <div className="folder-create__fields">
+                  <label className="folder-create__label" htmlFor="newFolderName">Add folder</label>
+                  <input
+                    id="newFolderName"
+                    type="text"
+                    placeholder="Workspace, Capstone, Personal..."
+                    value={newFolderName}
+                    onChange={e=>setNewFolderName(e.target.value)}
+                    className="form-control folder-name-input"
+                    disabled={!canManageTasks}
+                  />
+                  <div className="folder-color-picker" aria-label="Optional folder color">
+                    <label className="color-toggle">
+                      <input type="checkbox" checked={useFolderColor} onChange={e=>setUseFolderColor(e.target.checked)} disabled={!canManageTasks} />
+                      <span>Color</span>
+                    </label>
+                    <input
+                      type="color"
+                      value={newFolderColor}
+                      onChange={e=>{ setNewFolderColor(e.target.value); setUseFolderColor(true) }}
+                      disabled={!useFolderColor || !canManageTasks}
+                      title="Pick a folder color"
+                      className="folder-color-picker__input"
+                    />
+                    <button type="button" className="link-btn" onClick={()=>setUseFolderColor(false)} disabled={!canManageTasks || !useFolderColor}>No color</button>
+                  </div>
+                  <p className="folder-create__hint">Color shows up on chips and calendar dots; leave it off for neutral folders.</p>
+                </div>
+                <div className="folder-create__actions">
+                  <button className="btn btn--outline btn--sm" type="button" onClick={()=>setShowFolderForm(false)}>Cancel</button>
+                  <button className="btn btn--primary btn--sm" type="submit" disabled={!canManageTasks || !newFolderName.trim()}><i className="fas fa-folder-plus"/> Add Folder</button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
       </div>
 
       {isSupervisor && !activeAssigneeEmail && (
@@ -466,6 +572,18 @@ export default function TasksPage() {
               setCalMonth(m => { const nm = (m+1)%12; if (m===11) setCalYear(y=>y+1); return nm })
             }}><i className="fas fa-chevron-right"/></button>
           </div>
+          <div className="calendar-legend">
+            {folders && folders.some(f=>f.color) ? (
+              (folders||[]).filter(f=>f.color).map(f => (
+                <span key={f.id} className="legend-item">
+                  <span className="legend-swatch" style={{ background: f.color }} aria-hidden="true" />
+                  <span>{f.name}</span>
+                </span>
+              ))
+            ) : (
+              <span className="legend-note">Add a folder color to see it on the calendar.</span>
+            )}
+          </div>
           <div className="calendar-grid">
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=> <div key={d} className="calendar-day-header">{d}</div>)}
             {days.map(cell => cell.empty ? <div key={cell.key} className="calendar-day empty"/> : (
@@ -493,11 +611,37 @@ export default function TasksPage() {
                     </div>
                   )
                 })()}
-                {cell.tasks.map(t => <div key={t.id} className={`task-dot ${t.priority||'medium'}`} title={`${t.title}${t.dueDate? ' · '+new Date(t.dueDate).toLocaleString():''}`}/>) }
+                {cell.tasks.map(t => {
+                  const color = t.folderId ? (folderById[t.folderId]?.color || null) : null
+                  const ring = color ? (hexToRgba(color, 0.35) || color) : null
+                  const title = `${t.title}${t.dueDate? ' · '+new Date(t.dueDate).toLocaleString():''}${t.folderId && folderById[t.folderId]?.name ? ` · ${folderById[t.folderId].name}` : ''}`
+                  return (
+                    <div
+                      key={t.id}
+                      className={`task-dot ${t.priority||'medium'}`}
+                      title={title}
+                      style={color ? { background: color, boxShadow: ring ? `0 0 0 2px ${ring}` : undefined } : undefined}
+                    />
+                  )
+                })}
                 {cell.deadlines && cell.deadlines.map((d,i) => <div key={`dl-${i}`} className="deadline-dot" title={`${d.title || d.task_title}${d.dueAt? ' · '+new Date(d.dueAt).toLocaleString():''}`}/>) }
                 {cell.tasks.length>0 && (
                   <div className="day-tasks">
-                    {cell.tasks.map(t=> <div key={t.id} className="mini-task">{t.title}</div>)}
+                    {cell.tasks.map(t=> {
+                      const color = t.folderId ? (folderById[t.folderId]?.color || null) : null
+                      const background = color ? (hexToRgba(color, 0.18) || color) : undefined
+                      const border = color ? (hexToRgba(color, 0.4) || color) : undefined
+                      return (
+                        <div
+                          key={t.id}
+                          className="mini-task"
+                          style={color ? { background: background, border: border ? `1px solid ${border}` : undefined, color: 'var(--color-text)' } : undefined}
+                          title={t.folderId && folderById[t.folderId]?.name ? `${t.title} · ${folderById[t.folderId].name}` : t.title}
+                        >
+                          {t.title}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
