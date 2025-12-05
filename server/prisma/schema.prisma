@@ -63,6 +63,7 @@ model Folder {
   userId     Int?
   user       User?    @relation(fields: [userId], references: [id])
   name       String
+  color      String?
   orderIndex Int      @default(0)
   tasks      Task[]
   createdAt  DateTime @default(now())
