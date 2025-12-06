@@ -99,6 +99,22 @@ export const api = {
   createHelpRequest: (body) => http('/api/help-requests', { method: 'POST', body: JSON.stringify(body) }),
   listHelpRequests: () => http('/api/help-requests'),
 
+  // Moods
+  listMoods: (limit = 7) => {
+    const search = new URLSearchParams()
+    if (limit) search.set('limit', String(limit))
+    const suffix = search.toString() ? `?${search.toString()}` : ''
+    return http(`/api/moods${suffix}`)
+  },
+  createMood: (body) => http('/api/moods', { method: 'POST', body: JSON.stringify(body) }),
+  moodTrends: (days = 7) => {
+    const search = new URLSearchParams()
+    if (days) search.set('days', String(days))
+    const suffix = search.toString() ? `?${search.toString()}` : ''
+    return http(`/api/moods/trends${suffix}`)
+  },
+  createMoodReminder: (body) => http('/api/moods/reminders', { method: 'POST', body: JSON.stringify(body) }),
+
   // Subtasks
   listSubtasks: (taskId) => http(`/tasks/${taskId}/subtasks`),
   createSubtask: (taskId, body) => http(`/tasks/${taskId}/subtasks`, { method: 'POST', body: JSON.stringify(body) }),

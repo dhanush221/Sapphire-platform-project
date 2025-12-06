@@ -2,6 +2,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "../ERD.svg"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -20,6 +25,8 @@ model User {
   resources    Resource[]
   sessions     Session[]
   passwordResets PasswordResetToken[]
+  moodEntries  MoodEntry[]
+  breakReminders BreakReminder[]
   recipientDeadlines Deadline[] @relation("RecipientUser")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -56,6 +63,7 @@ model Folder {
   userId     Int?
   user       User?    @relation(fields: [userId], references: [id])
   name       String
+  color      String?
   orderIndex Int      @default(0)
   tasks      Task[]
   createdAt  DateTime @default(now())
@@ -178,6 +186,7 @@ model Session {
   lastUsedAt DateTime @updatedAt
 }
 
+
 model PasswordResetToken {
   id         Int      @id @default(autoincrement())
   userId     Int
@@ -186,4 +195,30 @@ model PasswordResetToken {
   expiresAt  DateTime
   usedAt     DateTime?
   createdAt  DateTime @default(now())
+}
+
+model MoodEntry {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mood      Int
+  energy    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model BreakReminder {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  minutes   Int
+  remindAt  DateTime
+  mood      Int?
+  energy    Int?
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([remindAt])
 }

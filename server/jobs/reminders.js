@@ -49,6 +49,28 @@ export async function runReminderJob(logger = console) {
       logger.error('Failed to send reminder', { id: r.id, err });
     }
   }
+
+  // Mood break reminders
+  const breakReminders = await prisma.breakReminder.findMany({
+    where: { sentAt: null, remindAt: { lte: windowUpper } },
+    include: { user: true }
+  });
+
+  for (const br of breakReminders) {
+    try {
+      const to = br.user?.email || process.env.NOTIFY_EMAIL || null;
+      const subject = 'Break reminder';
+      const text = `Time to take a ${br.minutes}-minute break${br.mood || br.energy ? ` (mood ${br.mood ?? '-'}, energy ${br.energy ?? '-'})` : ''}.`;
+      if (to && transporter) {
+        await transporter.sendMail({ from: process.env.EMAIL_FROM || 'no-reply@sapphire.local', to, subject, text });
+      } else {
+        logger.log('[break-reminder][stub] would send:', { to, subject });
+      }
+      await prisma.breakReminder.update({ where: { id: br.id }, data: { sentAt: new Date() } });
+    } catch (err) {
+      logger.error('Failed to send break reminder', { id: br.id, err });
+    }
+  }
 }
 
 export function scheduleReminderJob() {
