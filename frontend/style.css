@@ -2794,6 +2794,77 @@ select.form-control {
   --color-border: var(--color-black);
 }
 
+:root.reduce-motion {
+  scroll-behavior: auto;
+}
+
+:root.reduce-motion *, :root.reduce-motion *::before, :root.reduce-motion *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+:root.reduce-motion .task-subtasks {
+  transition: none !important;
+  max-height: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+:root.reduce-motion .task-subtasks.is-closed {
+  display: none !important;
+  max-height: 0 !important;
+  opacity: 0 !important;
+}
+
+:root.reduce-motion .subtask-row {
+  animation: none !important;
+}
+
+:root.reduce-motion .subtask-row input:checked + span {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: none !important;
+}
+
+:root.reduce-motion .subtask-row input:checked + span::after {
+  display: none !important;
+  width: 0 !important;
+  transition: none !important;
+}
+
+:root.reduce-motion .subtask-row label span {
+  text-decoration: none !important;
+}
+
+:root.reduce-motion .subtask-row label span::after {
+  width: 0 !important;
+  display: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subtask-row input:checked + span,
+  :root.reduce-motion .subtask-row input:checked + span {
+    color: var(--color-text-secondary);
+    text-decoration: none !important;
+  }
+  .subtask-row input:checked + span::after,
+  :root.reduce-motion .subtask-row input:checked + span::after {
+    display: none !important;
+    width: 0 !important;
+  }
+  .subtask-row label span,
+  :root.reduce-motion .subtask-row label span {
+    text-decoration: none !important;
+  }
+  .subtask-row label span::after,
+  :root.reduce-motion .subtask-row label span::after {
+    display: none !important;
+    width: 0 !important;
+  }
+}
+
 /* Print Styles */
 @media print {
   .navbar,
@@ -2996,6 +3067,11 @@ select.form-control {
 .btn--full-width { width: 100%; justify-content: center; }
 .auth-footer { margin-top: 12px; text-align: center; color: var(--color-text-secondary); }
 .auth-footer a { color: var(--color-primary); text-decoration: none; }
+.auth-divider { display:flex; align-items:center; gap:10px; margin: 16px 0 10px; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.auth-divider::before, .auth-divider::after { content: ""; flex:1; height:1px; background: var(--color-border); }
+.google-btn-wrapper { display:flex; justify-content:center; margin: 8px 0 4px; }
+.google-btn-wrapper.is-loading { opacity: 0.6; pointer-events: none; }
+.google-btn-slot { min-height: 46px; display:flex; align-items:center; justify-content:center; }
 
 /* Buttons */
 .btn { display:inline-flex; align-items:center; gap:6px; border-radius:10px; border:1px solid transparent; cursor:pointer; padding:8px 12px; }

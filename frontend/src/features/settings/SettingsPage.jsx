@@ -1,32 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { usePreferences } from '../../context/PreferencesContext.jsx'
 
 export default function SettingsPage() {
   const { user } = useAuth()
-  const [theme, setTheme] = useState('auto')
-  const [highContrast, setHighContrast] = useState(false)
-  const [fontSize, setFontSize] = useState('medium')
+  const { preferences, setTheme, setFontSize, setHighContrast, setNotification, setAccessibility } = usePreferences()
+  const { theme, highContrast, fontSize, notifications, accessibility } = preferences
   const [name, setName] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
   const [role, setRole] = useState(user?.role || 'student')
   const navigate = useNavigate()
-
-  useEffect(() => {
-    if (theme === 'dark') document.documentElement.setAttribute('data-color-scheme', 'dark')
-    else if (theme === 'light') document.documentElement.setAttribute('data-color-scheme', 'light')
-    else document.documentElement.removeAttribute('data-color-scheme')
-  }, [theme])
-
-  useEffect(() => {
-    document.body.classList.toggle('high-contrast', highContrast)
-  }, [highContrast])
-
-  useEffect(() => {
-    const map = { small: '12px', medium: '14px', large: '16px' }
-    const val = map[fontSize] || '14px'
-    document.documentElement.style.setProperty('--font-size-base', val)
-  }, [fontSize])
 
   useEffect(() => {
     if (user) {
@@ -80,17 +64,17 @@ export default function SettingsPage() {
         <div className="card">
           <div className="card__header"><h3>Notifications</h3></div>
           <div className="card__body">
-            <div className="form-group"><label className="form-label">Task Reminders</label><label className="toggle"><input type="checkbox" id="taskReminders" defaultChecked /><span className="toggle-slider"></span></label></div>
-            <div className="form-group"><label className="form-label">Meeting Notifications</label><label className="toggle"><input type="checkbox" id="meetingNotifications" defaultChecked /><span className="toggle-slider"></span></label></div>
-            <div className="form-group"><label className="form-label">Break Reminders</label><label className="toggle"><input type="checkbox" id="breakReminders" /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Task Reminders</label><label className="toggle"><input type="checkbox" id="taskReminders" checked={!!notifications.taskReminders} onChange={e=>setNotification('taskReminders', e.target.checked)} /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Meeting Notifications</label><label className="toggle"><input type="checkbox" id="meetingNotifications" checked={!!notifications.meetingNotifications} onChange={e=>setNotification('meetingNotifications', e.target.checked)} /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Break Reminders</label><label className="toggle"><input type="checkbox" id="breakReminders" checked={!!notifications.breakReminders} onChange={e=>setNotification('breakReminders', e.target.checked)} /><span className="toggle-slider"></span></label></div>
           </div>
         </div>
         <div className="card">
           <div className="card__header"><h3>Accessibility</h3></div>
           <div className="card__body">
-            <div className="form-group"><label className="form-label">Reduce Motion</label><label className="toggle"><input type="checkbox" id="reduceMotion" /><span className="toggle-slider"></span></label></div>
-            <div className="form-group"><label className="form-label">Screen Reader Support</label><label className="toggle"><input type="checkbox" id="screenReader" defaultChecked /><span className="toggle-slider"></span></label></div>
-            <div className="form-group"><label className="form-label">Keyboard Navigation</label><label className="toggle"><input type="checkbox" id="keyboardNav" defaultChecked /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Reduce Motion</label><label className="toggle"><input type="checkbox" id="reduceMotion" checked={!!accessibility.reduceMotion} onChange={e=>setAccessibility('reduceMotion', e.target.checked)} /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Screen Reader Support</label><label className="toggle"><input type="checkbox" id="screenReader" checked={!!accessibility.screenReader} onChange={e=>setAccessibility('screenReader', e.target.checked)} /><span className="toggle-slider"></span></label></div>
+            <div className="form-group"><label className="form-label">Keyboard Navigation</label><label className="toggle"><input type="checkbox" id="keyboardNav" checked={!!accessibility.keyboardNav} onChange={e=>setAccessibility('keyboardNav', e.target.checked)} /><span className="toggle-slider"></span></label></div>
           </div>
         </div>
         <div className="card design-principles-card">

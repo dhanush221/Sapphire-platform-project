@@ -8,6 +8,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { sendMail } from '../utils/mailer.js';
 import { consumeResetToken, saveResetToken } from '../utils/resetTokens.js';
+import { OAuth2Client } from 'google-auth-library';
 
 const router = express.Router();
 const roleEnum = z.enum(['student', 'supervisor']);
@@ -33,9 +34,15 @@ const resetSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters.')
 });
 
+const googleLoginSchema = z.object({
+  credential: z.string().min(20, 'Google credential is required')
+});
+
 const RESET_URL_BASE = process.env.RESET_URL_BASE || 'http://localhost:5173/reset-password';
 const RESET_EXP_MINUTES_RAW = Number(process.env.RESET_TOKEN_MINUTES || 60);
 const RESET_EXP_MINUTES = Number.isFinite(RESET_EXP_MINUTES_RAW) && RESET_EXP_MINUTES_RAW > 0 ? RESET_EXP_MINUTES_RAW : 60;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 router.post('/register', validateBody(registerSchema), async (req, res) => {
   try {
@@ -157,6 +164,52 @@ router.post('/reset-password', validateBody(resetSchema), async (req, res) => {
   } catch (err) {
     console.error('POST /api/auth/reset-password failed:', err);
     return res.status(500).json({ error: 'Unable to reset password.' });
+  }
+});
+
+router.post('/google', validateBody(googleLoginSchema), async (req, res) => {
+  if (!googleClient || !GOOGLE_CLIENT_ID) {
+    return res.status(503).json({ error: 'Google Sign-In is not configured on the server.' });
+  }
+
+  try {
+    const { credential } = req.validatedBody;
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email || !payload.email_verified) {
+      return res.status(401).json({ error: 'Google account email is not verified.' });
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name || payload.given_name || payload.family_name || null;
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const randomPassword = crypto.randomBytes(24).toString('hex');
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: hashPassword(randomPassword),
+          name,
+          role: 'student'
+        }
+      });
+    } else if (!user.name && name) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name }
+      });
+    }
+
+    const { token, expiresAt } = await createSession(user.id);
+    setSessionCookie(res, token, expiresAt);
+    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+  } catch (err) {
+    console.error('POST /api/auth/google failed:', err);
+    return res.status(500).json({ error: 'Unable to sign in with Google right now.' });
   }
 });
 

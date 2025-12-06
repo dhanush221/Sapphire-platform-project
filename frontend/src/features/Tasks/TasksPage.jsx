@@ -6,6 +6,7 @@ import { useDeadlines } from '../../lib/hooks/useDeadlines'
 import { useFolders } from '../../lib/hooks/useFolders'
 import { api } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { usePreferences } from '../../context/PreferencesContext.jsx'
 
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
 
@@ -30,6 +31,8 @@ const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChan
   const [open, setOpen] = useState(false)
   const [subs, setSubs] = useState([])
   const [newSub, setNewSub] = useState('')
+  const { preferences } = usePreferences()
+  const reduceMotion = !!preferences?.accessibility?.reduceMotion || (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false)
 
   useEffect(() => {
     let alive = true
@@ -109,7 +112,7 @@ const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChan
       <div id={`st-${task.id}`} className={`task-subtasks ${open ? 'is-open' : 'is-closed'}`} style={{marginTop:8}} aria-hidden={!open}>
           {(subs||[]).map(s => (
             <div key={s.id} className="subtask-row">
-              <label><input type="checkbox" checked={!!s.done} onChange={()=>toggleDone(s)} /> <span style={{textDecoration: s.done?'line-through':'none'}}>{s.title}</span></label>
+              <label><input type="checkbox" checked={!!s.done} onChange={()=>toggleDone(s)} /> <span style={{textDecoration: reduceMotion ? 'none' : (s.done?'line-through':'none'), color: reduceMotion && s.done ? 'var(--color-text-secondary)' : undefined}}>{s.title}</span></label>
               <button className="btn-st-delete" onClick={()=>deleteSub(s)}><i className="fas fa-trash"/></button>
             </div>
           ))}
@@ -590,6 +593,8 @@ export default function TasksPage() {
               <div key={cell.key} className={`calendar-day ${cell.tasks.length>0? 'has-task':''} ${cell.deadlines && cell.deadlines.length>0 ? 'has-deadline':''}`}>
                 <span className="day-number">{cell.day}</span>
                 {(() => {
+                  const hasItems = (cell.tasks && cell.tasks.length > 0) || (cell.deadlines && cell.deadlines.length > 0)
+                  if (!hasItems) return null
                   const today = new Date(); today.setHours(0,0,0,0)
                   const dateForCell = new Date(calYear, calMonth, cell.day); dateForCell.setHours(0,0,0,0)
                   const diffDays = Math.floor((dateForCell.getTime() - today.getTime())/(1000*60*60*24))

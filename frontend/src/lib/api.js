@@ -138,6 +138,7 @@ export const api = {
   currentUser: () => http('/api/auth/me'),
   requestPasswordReset: (email) => http('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (body) => http('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
+  loginWithGoogle: (credential) => http('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
 
   // Generic
   get: (p) => http(p),

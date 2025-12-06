@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import Modal from '../components/Modal.jsx'
 import api from '../lib/api.js'
 
 export default function AppLayout() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { logout, user } = useAuth()
   const [helpOpen, setHelpOpen] = useState(false)
   const [notify, setNotify] = useState(false)
@@ -15,10 +14,6 @@ export default function AppLayout() {
   const [urgency, setUrgency] = useState('low')
 
   const linkClass = ({ isActive }) => `nav-btn${isActive ? ' active' : ''}`
-  const showSection = (id) => {
-    const map = { dashboard: '/', tasks: '/tasks', deadlines: '/deadlines', meetings: '/meetings', resources: '/resources', settings: '/settings' }
-    navigate(map[id] || '/')
-  }
   const handleLogout = async () => {
     try { await api.logout() } catch {}
     logout()
