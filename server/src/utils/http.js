@@ -14,8 +14,8 @@ export function setSessionCookie(res, token, expiresAt) {
   const isProd = (process.env.NODE_ENV || '').toLowerCase() === 'production';
   res.cookie('sapphire_session', token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax', // Must be 'none' for Vercel -> Render cross-site auth
+    secure: isProd, // Must be true if sameSite='none'
     expires: expiresAt ? new Date(expiresAt) : undefined,
     path: '/'
   });
