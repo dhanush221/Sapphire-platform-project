@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDeadlines } from '../../lib/hooks/useDeadlines'
 import { useTasks } from '../../lib/hooks/useTasks'
 import { api } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 function DeadlineRow({ d, now }) {
   const due = new Date(d.dueAt)
@@ -65,6 +66,7 @@ function AddDeadlineModal({ open, onClose, onSave, tasks }) {
 export default function DeadlinesPage() {
   const { deadlines, refresh, create } = useDeadlines()
   const { tasks } = useTasks()
+  const { user } = useAuth()
   const [now, setNow] = useState(Date.now())
   const [title, setTitle] = useState('')
   const [taskId, setTaskId] = useState('')
@@ -86,7 +88,7 @@ export default function DeadlinesPage() {
     if (r1) offs.push(1440)
     if (r3) offs.push(180)
     if (rH) offs.push(60)
-    const user = (() => { try { return JSON.parse(localStorage.getItem('sapphireUser')||'{}') } catch { return {} } })()
+    const email = user?.email || null
     let finalTaskId = taskId ? Number(taskId) : null
     if (!finalTaskId) {
       // Create a lightweight task automatically so deadlines can exist without manual linking
@@ -99,7 +101,7 @@ export default function DeadlinesPage() {
       title: title || null,
       dueAt: new Date(dueDate).toISOString(),
       reminders: offs,
-      recipientEmail: user?.email || null,
+      recipientEmail: email,
     }
     try {
       await create(payload)

@@ -17,7 +17,8 @@ const SettingsProfilePage = lazy(() => import('./features/settings/ProfilePage.j
 const HelpRequestsPage = lazy(() => import('./features/help/HelpRequestsPage.jsx'))
 
 function RequireAuth({ children }) {
-  const { user } = useAuth()
+  const { user, hydrated } = useAuth()
+  if (!hydrated) return <div className="page-loader">Checking session…</div>
   if (!user) return <Navigate to="/login" replace />
   return children
 }
