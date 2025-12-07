@@ -108,6 +108,7 @@ app.use('/tasks', tasksRouter);
 app.use('/deadlines', deadlinesRouter);
 app.use('/folders', foldersRouter);
 app.use('/users', usersRouter);
+app.set('trust proxy', 1); // Trust first proxy (Render load balancer)
 app.use('/api/resources', resourcesRouter);
 app.use('/', subtasksRouter);
 
