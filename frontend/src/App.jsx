@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+// Deployment handling
 import { useAuth } from './context/AuthContext.jsx'
 
 const Login = lazy(() => import('./features/auth/Login.jsx'))
@@ -25,7 +26,7 @@ function RequireAuth({ children }) {
 
 export default function App() {
   return (
-    <Suspense fallback={<div style={{padding:16}}>Loading...</div>}>
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading...</div>}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
