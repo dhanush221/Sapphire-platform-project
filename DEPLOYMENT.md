@@ -1,26 +1,40 @@
-## Deploying to Vercel (frontend) + server host (backend)
+# Deployment Guide
 
-The repo is split: `frontend` (Vite React, served under `/app`) and `server` (Express + Prisma/Postgres). Deploy the frontend on Vercel and the backend on a server platform (Render/Railway/Fly/Heroku/etc.).
+This project is configured for a split deployment:
+- **Frontend**: Deployed to **Vercel**.
+- **Backend**: Deployed to **Render**.
 
-### 1) Frontend on Vercel
-- Import the repo in Vercel, set project root to `frontend`, framework `Vite`, build command `npm run build`, output directory `dist`.
-- Env vars: set `VITE_API_URL` to your backend URL, e.g. `https://api.your-domain.com`.
-- `vercel.json` (at repo root) keeps `/app` working and adds SPA fallbacks for client routes.
+## 1. Backend Deployment (Render)
 
-### 2) Backend on your server platform
-- App root: `server`. Runtime: Node 18+.
-- Env vars (see `server/.env.example`):
-  - `DATABASE_URL` (Postgres), `PORT` (e.g. 5000).
-  - Optional: `OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY` + `AI_MODE=live`, `SMTP_*`, `EMAIL_FROM`, `REMINDER_POLL_SECONDS`, `MAX_UPLOAD_SIZE_MB`.
-- Deploy steps (typical):
-  1. `npm ci`
-  2. `npx prisma generate`
-  3. `npx prisma migrate deploy`
-  4. `node src/index.js`
-- Persist uploads: back `server/uploads` with a volume or swap to object storage if your host has ephemeral disk.
-- CORS is permissive by default; tighten origins if desired.
+1.  Create a new **Web Service** on Render.
+2.  Connect your GitHub repository.
+3.  **Root Directory**: `server`
+4.  **Runtime**: Node
+5.  **Build Command**: `npm install && npx prisma generate`
+6.  **Start Command**: `npm start`
+7.  **Environment Variables**:
+    *   `DATABASE_URL`: Your PostgreSQL connection string (Internal URL if using Render Postgres).
+    *   `NODE_ENV`: `production`
+    *   `JWT_SECRET`: A long random string.
+    *   `FRONTEND_URL`: Your Vercel frontend URL (e.g., `https://your-app.vercel.app`).
+    *   `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (for emails).
+    *   `OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY` (if using AI features).
 
-### 3) Validate
-- Backend health: `https://your-backend-domain/api/health`.
-- Frontend: `https://your-vercel-domain/app`.
-- Confirm network calls from the frontend use the backend URL set in `VITE_API_URL`.
+## 2. Frontend Deployment (Vercel)
+
+1.  Import the project into Vercel.
+2.  **Root Directory**: `frontend` (Edit the root directory in the project settings if it defaults to root).
+3.  **Framework Preset**: Vite
+4.  **Environment Variables**:
+    *   `VITE_API_URL`: Your Render backend URL (e.g., `https://sapphire-server.onrender.com`).
+5.  Deploy.
+
+## 3. Post-Deployment
+
+1.  **Database Migration**:
+    *   On Render, go to your Web Service > Shell.
+    *   Run: `npx prisma migrate deploy` to ensure the database schema is up to date.
+
+2.  **Verify**:
+    *   Visit your Vercel URL.
+    *   Try logging in or signing up to verify the connection to the backend.

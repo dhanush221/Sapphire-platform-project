@@ -71,7 +71,11 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 // Convenience redirect for root to the SPA
 app.get('/', (_req, res) => {
-  res.redirect('/app');
+  res.json({
+    message: 'Sapphire Platform API Server Running',
+    documentation: '/api/docs', // if you have it, or just omit
+    health: '/api/health'
+  });
 });
 
 // Serve built frontend under /app (avoid API route collisions)
