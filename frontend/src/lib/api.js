@@ -140,6 +140,17 @@ export const api = {
   resetPassword: (body) => http('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
   loginWithGoogle: (credential) => http('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
 
+  // Google Calendar
+  googleCalendarStatus: () => http('/api/google/calendar/status'),
+  googleCalendarAuthUrl: () => http('/api/google/calendar/auth-url'),
+  googleCalendarEvents: (params = {}) => {
+    const search = new URLSearchParams()
+    if (params.timeMin) search.set('timeMin', params.timeMin)
+    if (params.timeMax) search.set('timeMax', params.timeMax)
+    const suffix = search.toString() ? `?${search.toString()}` : ''
+    return http(`/api/google/calendar/events${suffix}`)
+  },
+
   // Generic
   get: (p) => http(p),
   post: (p, b) => http(p, { method: 'POST', body: JSON.stringify(b) }),

@@ -209,6 +209,11 @@ export default function TasksPage() {
   const [newFolderColor, setNewFolderColor] = useState('#4f46e5')
   const [useFolderColor, setUseFolderColor] = useState(false)
   const [showFolderForm, setShowFolderForm] = useState(false)
+  const [googleStatus, setGoogleStatus] = useState({ connected: false, email: null })
+  const [googleEvents, setGoogleEvents] = useState([])
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [googleError, setGoogleError] = useState(null)
+  const [googleConnecting, setGoogleConnecting] = useState(false)
 
   // Sync view with URL query (?view=kanban|list|calendar)
   useEffect(() => {
@@ -308,15 +313,25 @@ export default function TasksPage() {
     const firstDay = new Date(calYear, calMonth, 1).getDay()
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
     const cells = []
+    const isEventOnDay = (ev, dayDate) => {
+      if (!ev) return false
+      if (ev.isAllDay && ev.startDate && ev.endDate) {
+        return dayDate >= ev.startDate && dayDate < ev.endDate
+      }
+      if (ev.startDate) return ev.startDate === dayDate
+      if (ev.start) return ev.start.startsWith(dayDate)
+      return false
+    }
     for (let i=0;i<firstDay;i++) cells.push({ empty:true, key:`e-${i}` })
     for (let d=1; d<=daysInMonth; d++) {
       const dayDate = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
       const t = (filteredTasks||[]).filter(x => x.dueDate && x.dueDate.startsWith && x.dueDate.startsWith(dayDate))
       const dl = (deadlines||[]).filter(x => x.dueAt && x.dueAt.startsWith && x.dueAt.startsWith(dayDate))
-      cells.push({ empty:false, day:d, key:`d-${d}`, tasks:t, deadlines:dl })
+      const ge = (googleEvents||[]).filter(ev => isEventOnDay(ev, dayDate))
+      cells.push({ empty:false, day:d, key:`d-${d}`, tasks:t, deadlines:dl, events:ge })
     }
     return cells
-  }, [filteredTasks, deadlines, calMonth, calYear])
+  }, [filteredTasks, deadlines, googleEvents, calMonth, calYear])
 
   const onSaveTask = async (payload) => {
     if (!payload.title) { alert('Title is required'); return }
@@ -373,10 +388,85 @@ export default function TasksPage() {
     setSelectedStudent(match || { email })
   }
 
+  const startGoogleConnect = async () => {
+    setGoogleError(null)
+    setGoogleConnecting(true)
+    try {
+      const res = await api.googleCalendarAuthUrl()
+      const url = res?.url
+      if (!url) throw new Error('Missing auth URL')
+      const w = window.open(url, 'google-calendar-connect', 'width=520,height=640')
+      if (!w) alert('Please allow popups to connect Google Calendar.')
+    } catch (err) {
+      alert(err?.message || 'Could not start Google connection.')
+      setGoogleError(err instanceof Error ? err : new Error('Could not start Google connection'))
+    } finally {
+      setGoogleConnecting(false)
+    }
+  }
+
   const defaultFolderId = useMemo(() => {
     if (selectedFolder === 'all' || selectedFolder === 'none') return null
     return selectedFolder
   }, [selectedFolder])
+
+  const loadGoogleStatus = useCallback(async () => {
+    if (!user) {
+      setGoogleStatus({ connected: false, email: null })
+      setGoogleEvents([])
+      return
+    }
+    try {
+      const status = await api.googleCalendarStatus()
+      setGoogleStatus(status || { connected: false, email: null })
+      setGoogleError(null)
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error('Unable to load Google Calendar status')
+      setGoogleError(e)
+      setGoogleStatus(prev => prev)
+    }
+  }, [user])
+
+  const fetchGoogleEvents = useCallback(async () => {
+    if (!googleStatus.connected) return
+    const start = new Date(calYear, calMonth, 1).toISOString()
+    const end = new Date(calYear, calMonth + 1, 0, 23, 59, 59, 999).toISOString()
+    setGoogleLoading(true); setGoogleError(null)
+    try {
+      const data = await api.googleCalendarEvents({ timeMin: start, timeMax: end })
+      setGoogleEvents(data?.events || [])
+      if (data?.connectedEmail) {
+        setGoogleStatus(s => ({ ...s, connected: true, email: data.connectedEmail }))
+      }
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error('Could not load Google Calendar events')
+      setGoogleError(e)
+      setGoogleEvents([])
+    } finally {
+      setGoogleLoading(false)
+    }
+  }, [googleStatus.connected, calMonth, calYear])
+
+  useEffect(() => {
+    loadGoogleStatus()
+  }, [loadGoogleStatus])
+
+  useEffect(() => {
+    if (view !== 'calendar' || !googleStatus.connected) return undefined
+    fetchGoogleEvents()
+  }, [view, googleStatus.connected, fetchGoogleEvents])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handler = (event) => {
+      const data = event?.data
+      if (!data || data.source !== 'sapphire' || data.type !== 'google-calendar') return
+      loadGoogleStatus()
+      if (data.ok) fetchGoogleEvents()
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [fetchGoogleEvents, loadGoogleStatus])
 
   return (
     <section id="tasks" className="content-section active">
@@ -575,7 +665,36 @@ export default function TasksPage() {
               setCalMonth(m => { const nm = (m+1)%12; if (m===11) setCalYear(y=>y+1); return nm })
             }}><i className="fas fa-chevron-right"/></button>
           </div>
+          <div className="calendar-sync">
+            <div className="calendar-sync__row">
+              <div className="calendar-sync__title">
+                <i className="fas fa-cloud"></i> Google Calendar
+              </div>
+              <div className="calendar-sync__actions">
+                {googleStatus.connected ? (
+                  <>
+                    <span className="calendar-sync__badge">Connected{googleStatus.email ? ` (${googleStatus.email})` : ''}</span>
+                    <button className="btn btn--outline btn--sm" onClick={fetchGoogleEvents} disabled={googleLoading}>
+                      {googleLoading ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn--primary btn--sm" onClick={startGoogleConnect} disabled={googleConnecting}>
+                    {googleConnecting ? 'Opening…' : 'Connect Google'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {googleError && <div className="calendar-sync__error">{googleError.message}</div>}
+            {!googleStatus.connected && !googleError && (
+              <div className="calendar-sync__hint">Link your Google Calendar to see events in this view.</div>
+            )}
+          </div>
           <div className="calendar-legend">
+            <span className="legend-item">
+              <span className="legend-swatch legend-google" aria-hidden="true" />
+              <span>Google Calendar</span>
+            </span>
             {folders && folders.some(f=>f.color) ? (
               (folders||[]).filter(f=>f.color).map(f => (
                 <span key={f.id} className="legend-item">
@@ -593,7 +712,7 @@ export default function TasksPage() {
               <div key={cell.key} className={`calendar-day ${cell.tasks.length>0? 'has-task':''} ${cell.deadlines && cell.deadlines.length>0 ? 'has-deadline':''}`}>
                 <span className="day-number">{cell.day}</span>
                 {(() => {
-                  const hasItems = (cell.tasks && cell.tasks.length > 0) || (cell.deadlines && cell.deadlines.length > 0)
+                  const hasItems = (cell.tasks && cell.tasks.length > 0) || (cell.deadlines && cell.deadlines.length > 0) || (cell.events && cell.events.length > 0)
                   if (!hasItems) return null
                   const today = new Date(); today.setHours(0,0,0,0)
                   const dateForCell = new Date(calYear, calMonth, cell.day); dateForCell.setHours(0,0,0,0)
@@ -629,6 +748,13 @@ export default function TasksPage() {
                     />
                   )
                 })}
+                {cell.events && cell.events.map(ev => (
+                  <div
+                    key={`ge-${ev.id}-${cell.day}`}
+                    className="google-event-dot"
+                    title={`${ev.summary}${ev.start ? ' · '+new Date(ev.start).toLocaleString() : ''}${ev.creatorEmail ? ' · '+ev.creatorEmail : ''}`}
+                  />
+                ))}
                 {cell.deadlines && cell.deadlines.map((d,i) => <div key={`dl-${i}`} className="deadline-dot" title={`${d.title || d.task_title}${d.dueAt? ' · '+new Date(d.dueAt).toLocaleString():''}`}/>) }
                 {cell.tasks.length>0 && (
                   <div className="day-tasks">
@@ -647,6 +773,19 @@ export default function TasksPage() {
                         </div>
                       )
                     })}
+                  </div>
+                )}
+                {cell.events && cell.events.length>0 && (
+                  <div className="day-events">
+                    {cell.events.map(ev => (
+                      <div
+                        key={`ev-${ev.id}-${cell.day}`}
+                        className="mini-event"
+                        title={ev.summary}
+                      >
+                        <i className="fas fa-calendar-alt" aria-hidden="true"></i> {ev.summary}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

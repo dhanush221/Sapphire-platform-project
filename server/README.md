@@ -33,6 +33,7 @@ Env
 
 - Required: `DATABASE_URL` (PostgreSQL), `PORT` (5000), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `REMINDER_POLL_SECONDS`.
 - Meetings (AssemblyAI): `ASSEMBLYAI_API_KEY` (set `AI_MODE=live` to force live processing, defaults to mock when key missing), optional `ASSEMBLYAI_SUMMARY_MODEL` (default `informative`), `ASSEMBLYAI_SUMMARY_TYPE` (default `bullets`), `MAX_UPLOAD_SIZE_MB` (default 500).
+- Google Calendar sync: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALENDAR_REDIRECT_URI` (default `http://localhost:5000/api/google/calendar/callback`). Optional: `GOOGLE_STATE_SECRET` to sign OAuth state.
 
 Frontend integration
 
