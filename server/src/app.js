@@ -53,9 +53,15 @@ app.use(
       if (!origin) return callback(null, true);
       if (process.env.NODE_ENV !== 'production') return callback(null, true);
 
+      // Allow all Vercel deployments (preview & production)
+      if (origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
+        console.error(`CORS Blocked Origin: ${origin}`); // Log blocked origin for debugging
         callback(new Error('Not allowed by CORS'));
       }
     },
