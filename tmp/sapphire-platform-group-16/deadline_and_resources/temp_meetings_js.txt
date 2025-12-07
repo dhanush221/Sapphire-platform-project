@@ -1,0 +1,70 @@
+// meetings.js
+
+// Initialize meeting tab buttons and content toggling
+export function initializeMeetingTabs() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      const tab = this.getAttribute('data-tab');
+
+      // Update tab buttons active state
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      this.classList.add('active');
+
+      // Show corresponding tab content
+      tabContents.forEach(content => {
+        content.classList.remove('active');
+        if (content.id === tab) {
+          content.classList.add('active');
+        }
+      });
+    });
+  });
+}
+
+uploadForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const file = fileInput.files[0];
+  if (!file) return alert("Select a recording first!");
+
+  const form = new FormData();
+  form.append("audio", file);
+
+  const res = await fetch("/api/meetings/upload", {
+    method: "POST",
+    headers: {
+      "x-user-email": localStorage.getItem("userEmail"),
+    },
+    body: form,
+  });
+
+  const data = await res.json();
+  const m = data.meeting;
+
+  // Render
+  output.innerHTML = `
+    <h3>${m.title}</h3>
+    <h4>Summary</h4>
+    <p>${m.summary}</p>
+
+    <h4>Action Items</h4>
+    <ul>${m.actionItems.map(ai => `<li>🗒️ ${ai.text}</li>`).join("")}</ul>
+
+    <details>
+      <summary>Full Transcript</summary>
+      <p>${m.transcript}</p>
+    </details>
+  `;
+});
+
+// Show meeting details section and scroll to it smoothly
+export function showMeetingDetails() {
+  const meetingDetails = document.getElementById('meetingDetails');
+  if (meetingDetails) {
+    meetingDetails.style.display = 'block';
+    meetingDetails.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
