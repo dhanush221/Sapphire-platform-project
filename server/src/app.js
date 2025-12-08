@@ -17,6 +17,7 @@ import usersRouter from './routes/users.js';
 import authRouter from './routes/auth.js';
 import resourcesRouter from './routes/resources.js';
 import moodsRouter from './routes/moods.js';
+import googleRouter from './routes/google.js';
 import { attachUserFromSession } from './middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,6 +76,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/google', googleRouter);
 // Convenience redirect for root to the SPA
 app.get('/', (_req, res) => {
   res.json({

@@ -2987,6 +2987,19 @@ select.form-control {
 .calendar-day .mini-task { background: var(--color-secondary); border-radius: var(--radius-base); padding: 2px 6px; }
 .calendar-day .mini-deadline { background: rgba(var(--color-teal-500-rgb), 0.12); color: var(--color-primary); border: 1px solid rgba(var(--color-teal-500-rgb), 0.25); border-radius: var(--radius-base); padding: 2px 6px; }
 
+.calendar-sync { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 10px 12px; background: var(--color-surface); margin: 10px 0; box-shadow: var(--shadow-xs); }
+.calendar-sync__row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.calendar-sync__title { font-weight: var(--font-weight-semibold); color: var(--color-text); display:flex; align-items:center; gap:8px; }
+.calendar-sync__actions { display:flex; align-items:center; gap:8px; }
+.calendar-sync__badge { background: rgba(var(--color-primary-rgb), 0.12); color: var(--color-primary); border: 1px solid rgba(var(--color-primary-rgb), 0.25); padding: 4px 8px; border-radius: var(--radius-full); font-size: var(--font-size-sm); }
+.calendar-sync__error { color: var(--color-error); font-size: var(--font-size-sm); margin-top: 6px; }
+.calendar-sync__hint { color: var(--color-text-secondary); font-size: var(--font-size-sm); margin-top: 4px; }
+
+.legend-google { background: linear-gradient(135deg, var(--color-primary), var(--color-indigo-500, #6366f1)); box-shadow: 0 0 0 1px rgba(0,0,0,0.05); }
+.google-event-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.35); display:inline-block; margin-right:4px; }
+.day-events { margin-top: 4px; display:flex; gap:4px; flex-wrap:wrap; }
+.mini-event { background: rgba(var(--color-primary-rgb), 0.12); color: var(--color-primary); border: 1px solid rgba(var(--color-primary-rgb), 0.25); border-radius: var(--radius-base); padding: 2px 6px; font-size: var(--font-size-sm); display:flex; align-items:center; gap:4px; }
+
 /* Calendar Legend */
 .calendar-legend { display:flex; align-items:center; gap:12px; flex-wrap:wrap; color: var(--color-text-secondary); margin: 8px 0 10px; }
 .legend-item { display:inline-flex; align-items:center; gap:6px; font-size: var(--font-size-sm); }
