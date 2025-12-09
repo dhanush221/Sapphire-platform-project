@@ -28,6 +28,10 @@ async function http(path, options = {}) {
   if (!isFormData && options.method && options.method !== 'GET') {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json'
   }
+  if (typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('sapphire_token')
+    if (token) headers['Authorization'] = `Bearer ${token}`
+  }
   const url = path.startsWith('/') ? `${API_BASE}${path}` : `${API_BASE}/${path}`
   const res = await fetch(url, { headers, credentials: 'include', ...options })
   const ct = res.headers.get('content-type') || ''
@@ -44,7 +48,7 @@ async function http(path, options = {}) {
       ? 'Hint: In dev, set VITE_API_BASE to your backend URL (e.g., http://localhost:5000).'
       : ''
     if (res.status === 401 && typeof unauthorizedHandler === 'function') {
-      try { unauthorizedHandler() } catch {}
+      try { unauthorizedHandler() } catch { }
     }
     throw new Error(data?.error || bodySnippet || `${res.status} ${res.statusText}` + (hint ? `\n${hint}` : ''))
   }
@@ -132,13 +136,33 @@ export const api = {
   deletePersonalResource: (id) => http(`/api/resources/${id}`, { method: 'DELETE' }),
 
   // Auth
-  login: (body) => http('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-  register: (body) => http('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
-  logout: () => http('/api/auth/logout', { method: 'POST' }),
+  login: async (body) => {
+    const data = await http('/api/auth/login', { method: 'POST', body: JSON.stringify(body) })
+    if (data.token && typeof localStorage !== 'undefined') localStorage.setItem('sapphire_token', data.token)
+    return data
+  },
+  register: async (body) => {
+    const data = await http('/api/auth/register', { method: 'POST', body: JSON.stringify(body) })
+    if (data.token && typeof localStorage !== 'undefined') localStorage.setItem('sapphire_token', data.token)
+    return data
+  },
+  logout: async () => {
+    try { await http('/api/auth/logout', { method: 'POST' }) } catch { }
+    if (typeof localStorage !== 'undefined') localStorage.removeItem('sapphire_token')
+    return { ok: true }
+  },
   currentUser: () => http('/api/auth/me'),
   requestPasswordReset: (email) => http('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
-  resetPassword: (body) => http('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(body) }),
-  loginWithGoogle: (credential) => http('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
+  resetPassword: async (body) => {
+    const data = await http('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(body) })
+    if (data.token && typeof localStorage !== 'undefined') localStorage.setItem('sapphire_token', data.token)
+    return data
+  },
+  loginWithGoogle: async (credential) => {
+    const data = await http('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) })
+    if (data.token && typeof localStorage !== 'undefined') localStorage.setItem('sapphire_token', data.token)
+    return data
+  },
 
   // Google Calendar
   googleCalendarStatus: () => http('/api/google/calendar/status'),

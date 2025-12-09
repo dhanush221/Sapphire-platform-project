@@ -62,7 +62,7 @@ router.post('/register', validateBody(registerSchema), async (req, res) => {
 
     const { token, expiresAt } = await createSession(user.id);
     setSessionCookie(res, token, expiresAt);
-    return res.status(201).json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    return res.status(201).json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, token });
   } catch (err) {
     console.error('POST /api/auth/register failed:', err);
     return res.status(500).json({ error: 'Unable to register right now.' });
@@ -79,7 +79,7 @@ router.post('/login', validateBody(loginSchema), async (req, res) => {
     }
     const { token, expiresAt } = await createSession(user.id);
     setSessionCookie(res, token, expiresAt);
-    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, token });
   } catch (err) {
     console.error('POST /api/auth/login failed:', err);
     return res.status(500).json({ error: 'Unable to login right now.' });
@@ -160,7 +160,7 @@ router.post('/reset-password', validateBody(resetSchema), async (req, res) => {
 
     const { token: sessionToken, expiresAt } = await createSession(user.id);
     setSessionCookie(res, sessionToken, expiresAt);
-    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, token: sessionToken });
   } catch (err) {
     console.error('POST /api/auth/reset-password failed:', err);
     return res.status(500).json({ error: 'Unable to reset password.' });
@@ -206,7 +206,7 @@ router.post('/google', validateBody(googleLoginSchema), async (req, res) => {
 
     const { token, expiresAt } = await createSession(user.id);
     setSessionCookie(res, token, expiresAt);
-    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, token });
   } catch (err) {
     console.error('POST /api/auth/google failed:', err);
     return res.status(500).json({ error: 'Unable to sign in with Google right now.' });
