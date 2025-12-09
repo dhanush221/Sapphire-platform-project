@@ -25,6 +25,13 @@ function hexToRgba(hex, alpha = 0.3) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function isSameDay(a, b) {
+  return a && b &&
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
 const TaskCard = memo(function TaskCard({ task, onEdit, onDelete, onSubtasksChanged }) {
   const dueDateObj = task.dueDate ? new Date(task.dueDate) : null
   const due = dueDateObj ? dueDateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''
@@ -308,6 +315,12 @@ export default function TasksPage() {
   const [calMonth, setCalMonth] = useState(()=> new Date().getMonth())
   const [calYear, setCalYear] = useState(()=> new Date().getFullYear())
   const monthName = useMemo(()=> ['January','February','March','April','May','June','July','August','September','October','November','December'][calMonth], [calMonth])
+  const [plannerDate, setPlannerDate] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); return d })
+  const [plannerNewTitle, setPlannerNewTitle] = useState('')
+  const [plannerNewTime, setPlannerNewTime] = useState('09:00')
+  const [plannerAllDay, setPlannerAllDay] = useState(false)
+  const [plannerNewPriority, setPlannerNewPriority] = useState('medium')
+  const [plannerNewFolder, setPlannerNewFolder] = useState('auto')
 
   const days = useMemo(() => {
     const firstDay = new Date(calYear, calMonth, 1).getDay()
@@ -332,6 +345,101 @@ export default function TasksPage() {
     }
     return cells
   }, [filteredTasks, deadlines, googleEvents, calMonth, calYear])
+
+  const plannerTasks = useMemo(() => {
+    const dayStart = new Date(plannerDate); dayStart.setHours(0,0,0,0)
+    return (filteredTasks||[])
+      .filter(t => t.dueDate)
+      .map(t => {
+        const due = new Date(t.dueDate)
+        return { ...t, _due: due, _hasTime: due.getHours() !== 0 || due.getMinutes() !== 0 }
+      })
+      .filter(t => isSameDay(t._due, dayStart))
+      .sort((a,b) => a._due - b._due || (a.title||'').localeCompare(b.title||''))
+  }, [filteredTasks, plannerDate])
+
+  const plannerEvents = useMemo(() => {
+    const day = new Date(plannerDate); day.setHours(0,0,0,0)
+    const dayStr = day.toISOString().slice(0,10)
+    const eventsForDay = (googleEvents||[])
+      .filter(ev => {
+        if (ev.isAllDay && ev.startDate && ev.endDate) {
+          return dayStr >= ev.startDate && dayStr < ev.endDate
+        }
+        if (ev.startDate) return ev.startDate === dayStr
+        if (ev.start) return ev.start.startsWith(dayStr)
+        return false
+      })
+      .map(ev => {
+        const start = ev.start ? new Date(ev.start) : null
+        const timeLabel = start ? start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''
+        return { ...ev, _start: start, _timeLabel: timeLabel }
+      })
+    const allDay = eventsForDay.filter(ev => ev.isAllDay || !ev._start)
+    const timed = eventsForDay.filter(ev => ev._start).sort((a,b)=> a._start - b._start)
+    return { allDay, timed }
+  }, [googleEvents, plannerDate])
+
+  const defaultFolderId = useMemo(() => {
+    if (selectedFolder === 'all' || selectedFolder === 'none') return null
+    return selectedFolder
+  }, [selectedFolder])
+
+  const shiftPlannerDay = useCallback((delta) => {
+    setPlannerDate(prev => {
+      const next = new Date(prev)
+      next.setDate(prev.getDate() + delta)
+      next.setHours(0,0,0,0)
+      return next
+    })
+  }, [])
+
+  const resetPlannerToToday = useCallback(() => {
+    const today = new Date(); today.setHours(0,0,0,0)
+    setPlannerDate(today)
+  }, [])
+
+  useEffect(() => {
+    // Keep quick-add folder aligned with current filter unless user picked specific folder
+    setPlannerNewFolder('auto')
+  }, [selectedFolder])
+
+  const handleSlotClick = useCallback((hour) => {
+    setPlannerAllDay(false)
+    const hr = String(hour).padStart(2,'0')
+    setPlannerNewTime(`${hr}:00`)
+  }, [])
+
+  const onAddPlannerTask = useCallback(async () => {
+    const title = plannerNewTitle.trim()
+    if (!title) { alert('Please enter a task title'); return }
+    const due = new Date(plannerDate)
+    if (!plannerAllDay && plannerNewTime) {
+      const [h,m] = plannerNewTime.split(':').map(Number)
+      due.setHours(Number.isFinite(h)?h:0, Number.isFinite(m)?m:0, 0, 0)
+    } else {
+      due.setHours(0,0,0,0)
+    }
+    const folderId = (() => {
+      if (plannerNewFolder === 'auto') return defaultFolderId ?? null
+      if (plannerNewFolder === 'none') return null
+      const val = Number(plannerNewFolder)
+      return Number.isNaN(val) ? null : val
+    })()
+    const payload = {
+      title,
+      dueDate: due.toISOString(),
+      priority: plannerNewPriority || 'medium',
+      folderId
+    }
+    try {
+      const finalPayload = isSupervisor ? { ...payload, assigneeEmail: activeAssigneeEmail } : payload
+      await create(finalPayload, { forEmail: activeAssigneeEmail })
+      setPlannerNewTitle('')
+    } catch (err) {
+      alert(err?.message || 'Could not create task')
+    }
+  }, [plannerNewTitle, plannerNewTime, plannerAllDay, plannerNewPriority, plannerNewFolder, plannerDate, defaultFolderId, isSupervisor, activeAssigneeEmail, create])
 
   const onSaveTask = async (payload) => {
     if (!payload.title) { alert('Title is required'); return }
@@ -405,11 +513,6 @@ export default function TasksPage() {
     }
   }
 
-  const defaultFolderId = useMemo(() => {
-    if (selectedFolder === 'all' || selectedFolder === 'none') return null
-    return selectedFolder
-  }, [selectedFolder])
-
   const loadGoogleStatus = useCallback(async () => {
     if (!user) {
       setGoogleStatus({ connected: false, email: null })
@@ -427,10 +530,10 @@ export default function TasksPage() {
     }
   }, [user])
 
-  const fetchGoogleEvents = useCallback(async () => {
+  const fetchGoogleEvents = useCallback(async (opts = {}) => {
     if (!googleStatus.connected) return
-    const start = new Date(calYear, calMonth, 1).toISOString()
-    const end = new Date(calYear, calMonth + 1, 0, 23, 59, 59, 999).toISOString()
+    const start = opts.timeMin || new Date(calYear, calMonth, 1).toISOString()
+    const end = opts.timeMax || new Date(calYear, calMonth + 1, 0, 23, 59, 59, 999).toISOString()
     setGoogleLoading(true); setGoogleError(null)
     try {
       const data = await api.googleCalendarEvents({ timeMin: start, timeMax: end })
@@ -455,6 +558,13 @@ export default function TasksPage() {
     if (view !== 'calendar' || !googleStatus.connected) return undefined
     fetchGoogleEvents()
   }, [view, googleStatus.connected, fetchGoogleEvents])
+
+  useEffect(() => {
+    if (view !== 'timeline' || !googleStatus.connected) return undefined
+    const start = new Date(plannerDate.getFullYear(), plannerDate.getMonth(), 1).toISOString()
+    const end = new Date(plannerDate.getFullYear(), plannerDate.getMonth() + 1, 0, 23, 59, 59, 999).toISOString()
+    fetchGoogleEvents({ timeMin: start, timeMax: end })
+  }, [view, googleStatus.connected, plannerDate, fetchGoogleEvents])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -798,33 +908,164 @@ export default function TasksPage() {
         <div id="timeline-view" className="task-view active">
           <div className="timeline">
             {(() => {
-              const items = (filteredTasks||[]).filter(t=>t.dueDate).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate))
-              if (items.length===0) return <div className="deadline-empty">No tasks with due dates</div>
-              const start = new Date(items[0].dueDate); start.setHours(0,0,0,0)
-              const end = new Date(start); end.setDate(start.getDate()+14)
-              const days = []; const cursor = new Date(start)
-              while (cursor <= end) { days.push(new Date(cursor)); cursor.setDate(cursor.getDate()+1) }
-              const dayWidth = 90
+              const hours = Array.from({ length: 24 }, (_, i) => i)
+              const allDayTasks = plannerTasks.filter(t => !t._hasTime)
+              const tasksByHour = hours.reduce((acc, hour) => { acc[hour] = []; return acc }, {})
+              plannerTasks.forEach(t => {
+                if (t._hasTime) {
+                  const h = t._due.getHours()
+                  if (tasksByHour[h]) tasksByHour[h].push(t)
+                }
+              })
+              const allDayEvents = plannerEvents.allDay || []
+              const eventsByHour = hours.reduce((acc, hour) => { acc[hour] = []; return acc }, {})
+              ;(plannerEvents.timed || []).forEach(ev => {
+                const h = ev._start ? ev._start.getHours() : null
+                if (h != null && eventsByHour[h]) eventsByHour[h].push(ev)
+              })
+              const dayLabel = plannerDate.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+              const isToday = isSameDay(plannerDate, (()=>{ const d = new Date(); d.setHours(0,0,0,0); return d })())
+              const formatHour = (h) => {
+                const suffix = h >= 12 ? 'PM' : 'AM'
+                const hour12 = ((h + 11) % 12) + 1
+                return `${hour12}:00 ${suffix}`
+              }
               return (
-                <div>
-                  <div className="timeline-days" style={{display:'flex'}}>
-                    {days.map((d,i)=> <div key={i} className="timeline-day" style={{width:dayWidth}}>{d.toLocaleDateString(undefined,{month:'short', day:'numeric'})}</div>)}
+                <>
+                  <div className="planner-controls">
+                    <div className="planner-controls__nav">
+                      <button className="btn btn--outline btn--sm" onClick={() => shiftPlannerDay(-1)} aria-label="Previous day"><i className="fas fa-chevron-left" /></button>
+                      <div className="planner-controls__label">
+                        <span>{dayLabel}</span>
+                        {isToday && <span className="planner-today-pill">Today</span>}
+                      </div>
+                      <button className="btn btn--outline btn--sm" onClick={() => shiftPlannerDay(1)} aria-label="Next day"><i className="fas fa-chevron-right" /></button>
+                    </div>
+                    <div className="planner-controls__actions">
+                      <button className="btn btn--outline btn--sm" onClick={resetPlannerToToday}>Jump to Today</button>
+                    </div>
                   </div>
-                  <div className="timeline-rows">
-                    {items.map(t=>{
-                      const due = new Date(t.dueDate); due.setHours(0,0,0,0)
-                      const offset = Math.max(0, Math.round((due - start)/(1000*60*60*24)))
-                      return (
-                        <div key={t.id} className="timeline-row">
-                          <div className={`timeline-item ${t.priority||'medium'}`} style={{left: offset*dayWidth}} title={t.title}>
-                            <span className="timeline-title">{t.title}</span>
-                            <span className="timeline-date">{new Date(t.dueDate).toLocaleDateString()}</span>
+
+                  <div className="planner-quickadd">
+                    <input
+                      type="text"
+                      placeholder="Add a task for this day"
+                      value={plannerNewTitle}
+                      onChange={e=>setPlannerNewTitle(e.target.value)}
+                      onKeyDown={e=>{ if (e.key==='Enter') { e.preventDefault(); onAddPlannerTask() } }}
+                    />
+                    <label className="planner-quickadd__time">
+                      <input type="checkbox" checked={plannerAllDay} onChange={e=>setPlannerAllDay(e.target.checked)} />
+                      All day
+                    </label>
+                    <input
+                      type="time"
+                      value={plannerNewTime}
+                      onChange={e=>setPlannerNewTime(e.target.value)}
+                      disabled={plannerAllDay}
+                      aria-label="Time"
+                    />
+                    <select value={plannerNewPriority} onChange={e=>setPlannerNewPriority(e.target.value)} aria-label="Priority">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                    <select value={plannerNewFolder} onChange={e=>setPlannerNewFolder(e.target.value)} aria-label="Folder">
+                      <option value="auto">Use current filter</option>
+                      <option value="none">No folder</option>
+                      {(folders||[]).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                    <button className="btn btn--primary btn--sm" onClick={onAddPlannerTask}>Add</button>
+                  </div>
+
+                  {plannerTasks.length === 0 && plannerEvents.allDay?.length===0 && plannerEvents.timed?.length===0 && (
+                    <div className="deadline-empty">No tasks or events on this day</div>
+                  )}
+
+                  {(plannerTasks.length > 0 || plannerEvents.allDay?.length || plannerEvents.timed?.length) && (
+                    <div className="day-planner">
+                      {(allDayTasks.length > 0 || allDayEvents.length > 0) && (
+                        <div className="planner-all-day">
+                          <div className="planner-all-day__label">
+                            <i className="fas fa-sun" aria-hidden="true"></i> All-day / no time
+                          </div>
+                          <div className="planner-all-day__items">
+                            {allDayTasks.map(t => {
+                              const color = t.folderId ? (folderById[t.folderId]?.color || null) : null
+                              const accent = color ? { borderLeftColor: color, background: hexToRgba(color, 0.12) || undefined } : undefined
+                              return (
+                                <div key={t.id} className={`planner-task ${t.priority || 'medium'}`} style={accent} title={t.title}>
+                                  <div className="planner-task__title">{t.title}</div>
+                                  <div className="planner-task__meta">
+                                    {t.folderId && folderById[t.folderId]?.name && (
+                                      <span className="planner-task__folder">{folderById[t.folderId].name}</span>
+                                    )}
+                                    <span className="planner-task__priority">{(t.priority || 'medium').replace('_',' ')}</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {allDayEvents.map(ev => (
+                              <div key={`g-${ev.id}`} className="planner-event" title={ev.summary}>
+                                <div className="planner-event__title">
+                                  <i className="fas fa-calendar-alt" aria-hidden="true"></i> {ev.summary}
+                                </div>
+                                <div className="planner-event__meta">
+                                  {ev.creatorEmail && <span className="planner-event__owner">{ev.creatorEmail}</span>}
+                                  {ev.calendarEmail && <span className="planner-event__calendar">{ev.calendarEmail}</span>}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                      )}
+
+                      <div className="planner-grid">
+                        {hours.map(hour => {
+                          const slotTasks = tasksByHour[hour] || []
+                          return (
+                            <div key={hour} className="planner-row">
+                              <div className="planner-hour-label">{formatHour(hour)}</div>
+                              <div className="planner-slot" onClick={()=>handleSlotClick(hour)} title="Click to set time for quick add">
+                                {slotTasks.map(t => {
+                                  const color = t.folderId ? (folderById[t.folderId]?.color || null) : null
+                                  const accent = color ? { borderLeftColor: color, background: hexToRgba(color, 0.14) || undefined } : undefined
+                                  const time = t._due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                                  return (
+                                    <div key={t.id} className={`planner-task ${t.priority || 'medium'}`} style={accent} title={t.title}>
+                                      <div className="planner-task__title">
+                                        <span className="planner-task__time">{time}</span>
+                                        {t.title}
+                                      </div>
+                                      <div className="planner-task__meta">
+                                        {t.folderId && folderById[t.folderId]?.name && (
+                                          <span className="planner-task__folder">{folderById[t.folderId].name}</span>
+                                        )}
+                                        <span className="planner-task__priority">{(t.priority || 'medium').replace('_',' ')}</span>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                                {(eventsByHour[hour] || []).map(ev => (
+                                  <div key={`gev-${ev.id}-${hour}`} className="planner-event">
+                                    <div className="planner-event__title">
+                                      <span className="planner-event__time">{ev._timeLabel}</span>
+                                      <i className="fas fa-calendar-alt" aria-hidden="true"></i> {ev.summary}
+                                    </div>
+                                    <div className="planner-event__meta">
+                                      {ev.creatorEmail && <span className="planner-event__owner">{ev.creatorEmail}</span>}
+                                      {ev.calendarEmail && <span className="planner-event__calendar">{ev.calendarEmail}</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )
             })()}
           </div>
