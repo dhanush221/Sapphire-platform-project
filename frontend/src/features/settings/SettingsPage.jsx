@@ -77,26 +77,6 @@ export default function SettingsPage() {
             <div className="form-group"><label className="form-label">Keyboard Navigation</label><label className="toggle"><input type="checkbox" id="keyboardNav" checked={!!accessibility.keyboardNav} onChange={e=>setAccessibility('keyboardNav', e.target.checked)} /><span className="toggle-slider"></span></label></div>
           </div>
         </div>
-        <div className="card design-principles-card">
-          <div className="card__header"><h3>Autism-Friendly Design Principles</h3></div>
-          <div className="card__body">
-            <div className="design-principles-wrapper">
-              <img src="https://ppl-ai-code-interpreter-files.s3.amazonaws.com/web/direct-files/7e33f05c8d808293b50d3f649bf25bc8/c4f28220-f3fa-4ffd-8730-5fbc6204ec13/1d2a0370.png" alt="Autism-Friendly Design Principles" className="design-principles-diagram" onError={(e)=>{e.currentTarget.style.display='none'; const next=e.currentTarget.nextElementSibling; if(next) next.style.display='block'}} />
-              <div className="image-fallback" style={{display:'none'}}>
-                <div className="principles-text">
-                  <h4>Design Principles for Neurodivergent Users:</h4>
-                  <ul>
-                    <li><strong>Visual Design:</strong> Clear contrast, consistent layouts, minimal distractions</li>
-                    <li><strong>Cognitive Accessibility:</strong> Simple language, clear instructions, predictable navigation</li>
-                    <li><strong>Sensory Considerations:</strong> Calm colors, reduced motion, customizable interfaces</li>
-                    <li><strong>Executive Function Support:</strong> Task organization, reminders, progress tracking</li>
-                    <li><strong>Communication Support:</strong> Multiple ways to access information, visual aids</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Edit modal removed; using dedicated route /settings/profile */}

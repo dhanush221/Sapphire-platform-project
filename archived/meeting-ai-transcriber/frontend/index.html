@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Meeting AI Transcriber</title>
+  <style>
+    :root { --brand:#2563eb; --bg:#f8fafc; --text:#0f172a; }
+    *{box-sizing:border-box}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:24px}
+    h1{margin:0 0 16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;max-width:900px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+    input[type=file]{padding:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff}
+    button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .progress-wrap{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:10px 0 4px}
+    .progress{height:100%;width:0;background:linear-gradient(90deg,#60a5fa,#2563eb);}
+    .muted{color:#475569;font-size:13px}
+    .section{margin-top:18px}
+    .block{white-space:pre-wrap;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:12px}
+    .label{font-weight:700;margin-bottom:6px}
+  </style>
+</head>
+<body>
+  <h1>Upload audio</h1>
+  <div class="card">
+    <div class="row">
+      <input id="audio" type="file" accept="audio/*" />
+      <button id="go">Upload & Transcribe</button>
+    </div>
+
+    <div class="progress-wrap">
+      <div id="bar" class="progress"></div>
+    </div>
+    <div id="status" class="muted">Idle</div>
+
+    <div class="section">
+      <div class="label">📝 Summary (short)</div>
+      <div id="summary" class="block">—</div>
+    </div>
+
+    <div class="section">
+      <div class="label">🗣 Transcript</div>
+      <div id="transcript" class="block">—</div>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById('go');
+    const fileInput = document.getElementById('audio');
+    const bar = document.getElementById('bar');
+    const statusEl = document.getElementById('status');
+    const summaryEl = document.getElementById('summary');
+    const transcriptEl = document.getElementById('transcript');
+
+    function setStatus(t){ statusEl.textContent = t; }
+    function setBar(pct){ bar.style.width = Math.max(0, Math.min(100, pct)) + '%'; }
+
+    async function fakeProgressUntil(ms, cap=90){
+      // simple determinate-looking progress while we wait for server
+      return new Promise(resolve => {
+        let pct = 5;
+        setBar(pct);
+        const step = ms/120; // ~120 steps
+        const iv = setInterval(()=>{
+          pct = Math.min(cap, pct + 1);
+          setBar(pct);
+        }, step);
+        resolve(()=>clearInterval(iv));
+      });
+    }
+
+    btn.onclick = async () => {
+      const f = fileInput.files[0];
+      if (!f) { alert('Choose an audio file'); return; }
+
+      btn.disabled = true;
+      summaryEl.textContent = '—';
+      transcriptEl.textContent = '—';
+
+      setStatus('Uploading...');
+      const fd = new FormData();
+      fd.append('file', f); // field name MUST be "file"
+
+      // start fake progress
+      const stopProgress = await fakeProgressUntil(8000, 92);
+
+      try {
+        setStatus('Processing (this can take ~20–60s)...');
+        const res = await fetch('http://localhost:8080/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        // finish progress
+        stopProgress();
+        setBar(100);
+        setStatus('Done');
+
+        if (data.error) {
+          summaryEl.textContent = 'Error: ' + data.error;
+          transcriptEl.textContent = '';
+          btn.disabled = false;
+          return;
+        }
+
+        // pretty output
+        summaryEl.textContent = data.summary || 'No summary.';
+        transcriptEl.textContent = data.transcript || 'No transcript.';
+      } catch (e) {
+        stopProgress();
+        setStatus('Failed');
+        summaryEl.textContent = 'Error: ' + e.message;
+        transcriptEl.textContent = '';
+      } finally {
+        btn.disabled = false;
+        setTimeout(()=>setBar(0), 1200); // resetting a bar after a moment
+      }
+    };
+  </script>
+</body>
+</html>
