@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
     try {
       if (user) localStorage.setItem('sapphireUser', JSON.stringify(user))
       else localStorage.removeItem('sapphireUser')
-    } catch {}
+    } catch { }
   }, [user])
 
   // Global 401 handler: clear auth state when backend says unauthorized
@@ -25,21 +25,28 @@ export function AuthProvider({ children }) {
   // Hydrate from server session on app load
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      try {
-        const resp = await api.currentUser()
-        if (!alive) return
-        if (resp?.user) setUser(resp.user)
-        else setUser(null)
-      } catch (err) {
-        if (!alive) return
-        // Any auth error -> treat as logged out
-        setUser(null)
-      } finally {
-        if (alive) setHydrated(true)
-      }
-    })()
-    return () => { alive = false }
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+
+      ; (async () => {
+        try {
+          const resp = await api.currentUser({ signal: controller.signal })
+          if (!alive) return
+          if (resp?.user) setUser(resp.user)
+          else setUser(null)
+        } catch (err) {
+          if (!alive) return
+          // Any auth error or timeout -> treat as logged out
+          setUser(null)
+        } finally {
+          clearTimeout(timeoutId)
+          if (alive) setHydrated(true)
+        }
+      })()
+    return () => {
+      alive = false
+      controller.abort()
+    }
   }, [])
 
   const login = useCallback((u) => setUser(u || null), [])

@@ -33,10 +33,29 @@ async function http(path, options = {}) {
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
   const url = path.startsWith('/') ? `${API_BASE}${path}` : `${API_BASE}/${path}`
-  const res = await fetch(url, { headers, credentials: 'include', ...options })
+
+  const reqController = new AbortController();
+  const reqTimeoutId = setTimeout(() => reqController.abort(), options.signal ? 0 : 8000); // 8s default timeout
+  const finalOptions = options.signal ? options : { ...options, signal: reqController.signal };
+
+  let res;
+  try {
+    res = await fetch(url, { headers, credentials: 'include', ...finalOptions })
+  } catch (err) {
+    throw new Error('Network error: Unable to reach the server. Is it running?')
+  } finally {
+    if (!options.signal) clearTimeout(reqTimeoutId);
+  }
+
   const ct = res.headers.get('content-type') || ''
   const text = await res.text()
   let data = null
+
+  if (ct.includes('text/html') && res.ok) {
+    // Vercel fallback - returning index.html instead of API response
+    throw new Error('API routing error: The frontend received an HTML page instead of JSON. Ensure VITE_API_BASE is set to the correct backend URL.')
+  }
+
   if (ct.includes('application/json')) {
     try { data = text ? JSON.parse(text) : null } catch { data = null }
   }
