@@ -2,3 +2,7 @@ server/uploads/
 server/node_modules/
 archived/backend_legacy/meeting-transcription/meeting-transcription/backend/uploads/
 archived/backend_legacy/meeting-transcription/meeting-transcription/backend/node_modules/
+
+.env
+*.env
+.env.*
